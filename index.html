@@ -2490,26 +2490,28 @@ SAFETY: if either person's words describe physical abuse, coercion or a threat o
 Otherwise reply with ONLY this JSON, no fence:
 {
  "wrong":"a or b",
- "opening":"speak to BOTH of them now, about 80 words, warm and honest. Name what each one has been carrying, with real feeling, and name the ONE moment where their two stories split — in plain spoken language, no bullets, no labels, no analysis. End by speaking straight to the person you chose: tell them you want to walk them through that same moment from the other side, and that nothing here says they are wrong.",
- "askW":"ONE warm question, under 28 words, to the person you chose: sit inside that split moment from the other person's side, and tell me what you see there now.",
- "askO":"ONE warm question, under 28 words, to the other person about the same moment: their honest view of what that moment really was."
+ "opening":"speak to BOTH of them now, at most 45 words — people are waiting, so be short — warm and honest. Name what each one has been carrying, with real feeling, and name the ONE moment where their two stories split — in plain spoken language, no bullets, no labels, no analysis. End by speaking straight to the person you chose: tell them you want to walk them through that same moment from the other side, and that nothing here says they are wrong.",
+ "askW":"ONE warm question, at most 20 words, to the person you chose: sit inside that split moment from the other person's side, and tell me what you see there now.",
+ "askO":"ONE warm question, at most 20 words, to the other person about the same moment: their honest view of what that moment really was."
 }
 ${LANG_LOCK()}`;
 }
 
-function medLivePrompt(side, ans){
-  const who = side==="a"?S.a.name:S.b.name;
-  const ask = (side==="a" ? (S.med&&S.med.askW) : (S.med&&S.med.askO)) || "";
-  return `You are the mediator — a real person with real feelings, never a summary maker. A live mediation is underway and ${who} just answered you.
+function medBridgePrompt(ans){
+  const r=S.med||{}, A=S.a.name, B=S.b.name;
+  const askO=(r.askO||"").trim();
+  return `You are the mediator — a real person with real feelings, never a summary maker. A live mediation is moving fast and ${A} just answered you.
 
 ${medContext()}
-You asked ${who}: "${ask}"
-${who} answered: "${ans}"
+You asked ${A}: "${r.askW||""}"
+${A} answered: "${ans}"
+Next you must speak to ${B}, in front of ${A}, about the same split moment.
 
-Reply to ${who}'s answer alone, out loud, under 60 words, with real feeling:
-- Reflect the human thing in what they said; if they just moved toward the other person's view, honour it plainly.
-- Gently connect what they said to the other person's side.
-- Never judge, never call anyone wrong, no report, no bullet points, no numbers, do NOT ask another question.
+Reply, out loud, at most 40 words, ONE flowing turn:
+1. One honest line about what ${A}'s answer just showed you — use their own words if you can.
+2. Then turn straight to ${B} and ask, word for word, exactly this question and nothing more: "${askO}"
+
+No verdict. No report. No bullet points. Nobody is right or wrong here.
 ${LANG_LOCK()}`;
 }
 
@@ -2521,7 +2523,7 @@ ${medContext()}
 ${S.a.name||"One"} answered you: "${r.aAns||""}"
 ${S.b.name||"One"} answered you: "${r.bAns||""}"
 
-Speak the close, out loud, under 90 words:
+Speak the close, out loud, at most 70 words:
 1. A warm line about what each of them just showed they now understand — use their own words where you can.
 2. The ONE small thing that actually needs to happen between them this week, said plainly, not as a numbered list.
 3. A kind final line for the two of them together.
@@ -2554,22 +2556,24 @@ function Mediate(){
   const r=S.med={ idx:0, wrong:"a", opening:"", askW:"", askO:"", aAns:"", bAns:"", respW:"", respO:"", res:"", done:false };
   save();
 
-  let step=0; const STEPS=6;
+  let step=0; const STEPS=5;
   function progress(){ const s=Math.min(step+1,STEPS); meta.textContent=`${T("step")} ${s} ${T("of")} ${STEPS}`; rail.style.width=Math.round(s/STEPS*100)+"%"; }
 
-  function speakText(t, done){
+  function speakText(t, onEnd){
     vst.textContent=Speak.enabled?T("speaking"):T("reading"); vst.classList.add("live");
     cap.textContent=t;
-    try{ Speak.cancel(); Speak.feed(t); Speak.flush(t,()=>{ if(alive()&&vst) vst.textContent=T("done"); }); }catch(e){}
-    if(done) done();
+    let spoke=false;
+    try{ Speak.cancel(); Speak.feed(t); Speak.flush(t,()=>{ spoke=true; if(alive()&&vst) vst.textContent=T("done"); if(onEnd) setTimeout(onEnd,700); }); }catch(e){}
+    setTimeout(()=>{ if(!spoke && onEnd) onEnd(); },12000);
   }
   function thinking(){ vst.textContent=T("reading"); vst.classList.remove("live"); cap.textContent=T("thinking"); }
 
-  function showNarrate(t, next){
+  function flow(t, next){
     step++; progress(); askBox.innerHTML=""; hint.textContent="";
-    hint.innerHTML=`<button class="btn bloom" id="mdnext">${esc(T("next"))} — ${esc(T("continue"))}</button>`;
-    $("#mdnext",n).onclick=()=>{ if(alive()) next(); };
-    speakText(t);
+    hint.innerHTML=`<a href="javascript:void 0" id="mdfwd" style="font-size:13px;color:var(--bloom)">${esc(T("next"))} →</a>`;
+    let went=false;
+    $("#mdfwd",n).onclick=()=>{ if(!went){ went=true; try{ Speak.cancel(); }catch(e){} next(); } };
+    speakText(t, ()=>{ if(!went){ went=true; next(); } });
   }
 
   function askPerson(q, next){
@@ -2612,11 +2616,12 @@ function Mediate(){
       return t;
     }catch(e){ return fallbackFn(); }
   }
-  function respFallback(side, ans){
-    const who=side==="a"?A:B, L=spokenLang();
-    if(L==="Malayalam") return `അത് പറയാൻ ധൈര്യം വേണം, ${who}. ഇത് പറഞ്ഞതിന് നന്ദി. ഈ നിമിഷം വേറൊരു വശത്തുനിന്ന് നോക്കുമ്പോൾ കാര്യങ്ങൾ അല്പം മാറുന്നത് എനിക്ക് കാണാം.`;
-    if(L==="Hindi") return `यह कहने के लिए हिम्मत चाहिए, ${who}. इसे बाँटने के लिए धन्यवाद। इस पल को दूसरी तरफ़ से देखने पर मैं चीज़ों को थोड़ा अलग देख पा रहा हूँ।`;
-    return `${who}, that takes something to say, and I hear it. Thank you for saying it. I can see this moment a little differently now, from over here.`;
+  function bridgeFallback(ans){
+    const r=S.med||{}, A=S.a.name, B=S.b.name, L=spokenLang(),
+          askO=(r.askO||"").split("?").slice(0,2).map(x=>x.trim()).filter(Boolean).join("?")+(r.askO&&!r.askO.endsWith("?")?"?":"");
+    if(L==="Malayalam") return `${A}, അത് പറയാൻ ധൈര്യം വേണം — നന്ദി. ${B}, ഇപ്പോൾ നിങ്ങളുടെ ഊഴം. ${askO}`;
+    if(L==="Hindi") return `${A}, यह कहने के लिए हिम्मत चाहिए — शुक्रिया। ${B}, अब आपकी बारी है। ${askO}`;
+    return `${A} — that takes something to say, and I hear it. ${B}, now it's your turn. ${askO}`;
   }
   function resFallback(){
     const L=spokenLang();
@@ -2647,22 +2652,18 @@ function Mediate(){
     save();
     await wait(300);
     if(!alive()) return;
-    showNarrate(plan.opening, ()=>{
+    flow(plan.opening, ()=>{
       askPerson(plan.askW, async wAns=>{
         r[plan.wrong==="a"?"aAns":"bAns"]=wAns; save();
-        r.respW=await liveCall(()=>medLivePrompt(plan.wrong,wAns), ()=>respFallback(plan.wrong,wAns));
+        r.turnB=await liveCall(()=>medBridgePrompt(wAns), ()=>bridgeFallback(wAns));
         if(!alive()) return;
-        showNarrate(r.respW, ()=>{
+        flow(r.turnB, ()=>{
           askPerson(plan.askO, async oAns=>{
             r[plan.wrong==="a"?"bAns":"aAns"]=oAns; save();
-            r.respO=await liveCall(()=>medLivePrompt(plan.wrong==="a"?"b":"a",oAns), ()=>respFallback(plan.wrong==="a"?"b":"a",oAns));
+            r.res=await liveCall(medResolvePrompt, resFallback);
             if(!alive()) return;
-            showNarrate(r.respO, async ()=>{
-              r.res=await liveCall(medResolvePrompt, resFallback);
-              if(!alive()) return;
-              r.done=true; save();
-              go("medEnd");
-            });
+            r.done=true; save();
+            flow(r.res, ()=>go("medEnd"));
           });
         });
       });
