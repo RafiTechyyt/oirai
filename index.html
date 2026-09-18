@@ -2187,11 +2187,11 @@ function Chamber(side){
   const comp=$("#composer",n), ta=$("#say",n), send=$("#send",n), hint=$("#hint",n);
   const my=TOKEN, alive=()=>TOKEN===my;
   const L=spokenLang();
-  const intro = L==="Malayalam"
-    ? "ഇത് നിങ്ങൾക്കും എനിക്കും ഇടയിൽ മാത്രം. ഒന്ന് പറഞ്ഞുതരൂ — ഏറ്റവും കൂടുതൽ വേദനിച്ചത് എവിടെ?"
-    : L==="Hindi"
-      ? "यह सिर्फ़ आप और मेरे बीच है। एक बात बताइए — सबसे ज़्यादा चोट कहाँ लगी?"
-      : "This stays between us. Tell me one thing — where did it hurt the most?";
+  const fallbackIntro = (lang, topic)=>{
+    if(lang==="Malayalam") return `ഇത് നിങ്ങൾക്കും എനിക്കും ഇടയിൽ മാത്രം. ${topic?`"${topic}" എന്ന കാര്യത്തിനുള്ളിൽ`:"ഈ കാര്യത്തിനുള്ളിൽ"} — ഏറ്റവും കൂടുതൽ വേദനിപ്പിച്ചത് എന്താണ്?`;
+    if(lang==="Hindi") return `यह सिर्फ़ आप और मेरे बीच है। ${topic?`"${topic}" मामले में`:"इस मामले में"} — सबसे ज़्यादा चोट कहाँ लगी?`;
+    return `This stays between us. ${topic?`About "${topic}" — `:"About what happened — "}where did it hurt the most?`;
+  };
   const ack = L==="Malayalam" ? "കിട്ടി. നന്ദി. ഇത് എനിക്കൊപ്പം സൂക്ഷിക്കും."
     : L==="Hindi" ? "मिल गया। शुक्रिया। यह मेरे पास रहेगा।"
     : "I've got it, thank you. It stays with me.";
@@ -2260,10 +2260,23 @@ function Chamber(side){
 
   applyMode();
   hint.textContent = typing ? "Type your side and press send — it stays private." : "Tap the mic and say it — nobody else hears it.";
-  cap.textContent=intro; setState("speaking",true);
-  try{ Speak.cancel(); Speak.feed(intro); Speak.flush(intro,()=>{ if(alive()&&!done&&!typing&&Ears.supported()) startListening(); }); }
-  catch(e){ startListening(); }
-  setTimeout(()=>{ if(alive()&&!done&&!typing&&Ears.supported()&&!Ears.listening) startListening(); }, 15000);
+  setState("reading",false); cap.textContent="";
+  (async()=>{
+    let q=fallbackIntro(L, S.topic||"");
+    try{
+      if(!AI.live()) throw 0;
+      const t=String(await AI.chat([{role:"user",content:chamberIntroPrompt(side)}],{tier:"quick"}))
+        .trim().replace(/<ENOUGH>/g,"").replace(/^["'“]+|["'”]+$/g,"").trim();
+      if(t.length<6 || t.length>130) throw 0;
+      if(L!=="English" && scriptPurity(L,t)<0.8) throw 0;
+      q=t;
+    }catch(e){}
+    if(!alive()||done) return;
+    cap.textContent=q; setState("speaking",true);
+    try{ Speak.cancel(); Speak.feed(q); Speak.flush(q,()=>{ if(alive()&&!done&&!typing&&Ears.supported()) startListening(); }); }
+    catch(e){ if(alive()&&!done) startListening(); }
+  })();
+  setTimeout(()=>{ if(alive()&&!done&&!typing&&Ears.supported()&&!Ears.listening) startListening(); }, 20000);
   return n;
 }
 
@@ -2461,6 +2474,22 @@ function Hold2(){
    out — with real feelings, no questions unless needed — and lands
    on the one small thing that actually needs to happen.
    --------------------------------------------------------------- */
+function chamberIntroPrompt(side){
+  const me=S[side].name, o=side==="a"?S.b.name:S.a.name;
+  const otherTold = side==="b"
+    ? `\nThe other person, ${S.a.name}, already told me privately:\n${sideText("a")}\nYou already know their story — do not reuse a question you could be asking them instead.`
+    : "";
+  return `You are the mediator in "Obviously, I'm Right" — a real person with real feelings, not an interviewer. ${me} is about to tell you their side, privately, as ONE short moment — this is their only chance to speak alone before the live mediation.
+
+This session is about "${S.topic||"what happened between them"}" — these two are ${S.relation||"two people who know each other"}.${otherTold}
+
+Write ONE warm human question, at most 20 words, that opens the private telling with ${me} about THIS exact matter — about the split moment in this story, not a generic question. No labels, no bullets, no "how did that make you feel".
+
+${LANG_LOCK()}
+
+Reply with the single question only, no quotes.`;
+}
+
 function medContext(){
   return `Relationship: ${S.relation||"two people who know each other"} · About: "${S.topic||"something that happened"}"
 
