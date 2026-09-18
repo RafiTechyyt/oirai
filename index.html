@@ -2685,19 +2685,18 @@ function Mediate(){
   });
 
   const vs=$("#vstate",n), cp=$("#cap",n);
-  cp.textContent=""; vs.textContent=T("thinking"); vs.classList.remove("live");
+  cp.textContent="";
+  const setState=(txt,live)=>{ if(!alive()) return; vs.textContent=txt; vs.classList.toggle("live",!!live); };
+  const showThink=()=>setState(T("thinking"),false);
+  const showIdle=()=>setState(T("your turn"),false);
   const enable=()=>{ if(!alive()) return; mb.disabled=false; kb.disabled=false; };
-  (async()=>{
-    if(r.opening){ enable(); return; }                    // plan already arrived from the other device
-    if(r.planClaimed){                                     // other device is planning — wait for it
-      const iv=setInterval(()=>{
-        if(!alive() || S.stage!=="mediate"){ clearInterval(iv); return; }
-        if(r.done==="stop"){ clearInterval(iv); go("medCare"); return; }
-        if(r.opening){ clearInterval(iv); enable(); }
-      },900);
-      return;
-    }
-    r.planClaimed=true; save();
+  showThink();
+
+  /* Build the live-mediation plan, then start talking. Can never hang on
+     "Thinking…": every path ends in a spoken turn or the fallback plan. */
+  async function runPlan(){
+    if(r.done) return;
+    if(!r.planClaimed) r.planClaimed=true;
     try{
       if(!AI.live()) throw 0;
       const raw=await Promise.race([
@@ -2705,15 +2704,43 @@ function Mediate(){
         wait(60000).then(()=>{ throw {code:"timed_out", message:"The mediator took too long planning"}; })
       ]);
       const p=pickJSON(raw);
-      if(p && p.stop){ r.done="stop"; save(); await wait(350); if(alive()) go("medCare"); return; }
+      if(p && p.stop){ r.done="stop"; r.planClaimed=false; save(); await wait(350); if(alive()) go("medCare"); return; }
       if(!(p && p.opening && p.askW && p.askO)) throw 0;
-      r.wrong=p.wrong==="b"?"b":"a"; r.opening=String(p.opening).trim(); r.askW=String(p.askW).trim(); r.askO=String(p.askO).trim(); save();
+      r.wrong=p.wrong==="b"?"b":"a"; r.opening=String(p.opening).trim(); r.askW=String(p.askW).trim(); r.askO=String(p.askO).trim();
     }catch(e){
-      const f=fallbackPlan(); r.wrong=f.wrong; r.opening=f.opening; r.askW=f.askW; r.askO=f.askO; save();
+      const f=fallbackPlan(); r.wrong=f.wrong; r.opening=f.opening; r.askW=f.askW; r.askO=f.askO;
     }
+    r.planClaimed=false; save();
     if(!alive() || r.done) return;
+    showThink();
     enable();
     room.speakNext();
+  }
+
+  /* A plan (or the start of the conversation) already exists — unlock it and,
+     on a single device, let the mediator speak an opening that never went out. */
+  function startReady(){
+    showIdle(); enable();
+    if(r.opening && !r.openingDone && S.mode!=="pair"){
+      r.planClaimed=false; save();
+      showThink(); room.speakNext();
+    }
+  }
+
+  (async()=>{
+    if(r.done){ go(r.done==="stop"?"medCare":"medEnd"); return; }
+    if(r.opening){ startReady(); return; }                // plan already arrived
+    if(r.planClaimed){                                    // a peer (or a stale crash) owns the planning — wait briefly, then take over
+      const t0=Date.now(), grace=S.mode==="pair"?9000:3000;
+      const iv=setInterval(()=>{
+        if(!alive() || S.stage!=="mediate"){ clearInterval(iv); return; }
+        if(r.done==="stop"){ clearInterval(iv); go("medCare"); return; }
+        if(r.opening){ clearInterval(iv); startReady(); return; }
+        if(Date.now()-t0>grace){ clearInterval(iv); runPlan(); return; }
+      },500);
+      return;
+    }
+    runPlan();
   })();
 
   wireTop(n,null);
