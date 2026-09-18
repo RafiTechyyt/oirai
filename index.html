@@ -658,7 +658,7 @@ Speak.enabled = store.get("tts", true);
 const Ears = (()=>{
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec=null, listening=false, finalText="", interim="";
-  let onPartial=null, onFinal=null, silence=null, stream=null, ac=null, an=null, raf=null;
+  let onPartial=null, onFinal=null, onHeld=null, silence=null, stream=null, ac=null, an=null, raf=null;
 
   const supported = ()=>!!SR;
 
@@ -691,9 +691,9 @@ const Ears = (()=>{
     silence = setTimeout(()=>{ if(listening && (finalText+interim).trim()) stop(true); }, ms);
   }
 
-  function start({partial, final, pauseMs=2200}={}){
+  function start({partial, final, pauseMs=2200, onHeld: held=null}={}){
     if(!SR || listening) return false;
-    onPartial=partial; onFinal=final; finalText=""; interim="";
+    onPartial=partial; onFinal=final; onHeld=held; finalText=""; interim="";
     rec = new SR();
     rec.continuous = true; rec.interimResults = true;
     const lan = store.get("lang", null) || store.get("accent", null) || "auto";
@@ -717,14 +717,16 @@ const Ears = (()=>{
     return true;
   }
 
-  function stop(commit){
+  function stop(commit, silent=false){
     if(!listening) return;
     listening=false; clearTimeout(silence); meter(false);
     try{ rec.onend=null; rec.stop(); }catch(e){}
     const t=(finalText+" "+interim).trim();
     finalText=interim="";
-    if(commit && t && onFinal) onFinal(t);
-    onPartial=onFinal=null;
+    const cb=onFinal, h=onHeld;
+    onPartial=onFinal=onHeld=null;
+    if(commit && t && cb) cb(t);
+    else if(!silent && h) h();
   }
   return {supported, start, stop, get listening(){ return listening; }};
 })();
@@ -1706,7 +1708,7 @@ function VoiceRoom(n, cfg){
 
   mainBtn.onclick=()=>{
     if(Ears.listening){ Ears.stop(true); return; }
-    if(Speak.busy){ Speak.cancel(); barging=true; startListening(); return; }   // barge in
+    if(busy || Speak.busy){ Speak.cancel(); barging=true; startListening(); return; }   // barge in
     startListening();
   };
 
@@ -1717,7 +1719,8 @@ function VoiceRoom(n, cfg){
     const ok = Ears.start({
       partial:t=>{ if(alive()) ucap.textContent=t; },
       final:t=>{ if(alive()) commit(t); },
-      pauseMs:2200
+      pauseMs:2200,
+      onHeld:()=>{ if(alive()) idle(); }
     });
     if(!ok){ typing=true; applyMode(); }
   }
@@ -1728,7 +1731,7 @@ function VoiceRoom(n, cfg){
 
   async function commit(text){
     if(!alive()) return;
-    Ears.stop(false); barging=false;
+    Ears.stop(false, true); barging=false;
     cfg.onUser(text);
     await speakNext();
   }
