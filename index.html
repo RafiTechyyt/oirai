@@ -2176,94 +2176,94 @@ function Pair(){
    14. CHAMBER — the private voice interview
    --------------------------------------------------------------- */
 function Chamber(side){
-  const st=S[side], other = side==="a"?S.b.name:S.a.name;
+  const st=S[side];
   Sky.setMerge(0); Sky.setEnergy(.3); Sky.setFocus(1);
   const n=stage(voiceShell({
     title: side==="a"?"Room one":"Room two", back:true, side,
-    name:`${st.name}, speaking privately`, meta:`listening ${st.qCount+1}/${MAXQ}`
+    name:`${st.name}, telling it privately`, meta:"one telling"
   }));
+  const cap=$("#cap",n), ucap=$("#ucap",n), vst=$("#vstate",n);
+  const mainBtn=$("#mainBtn",n), kbd=$("#kbd",n), vol=$("#volBtn",n);
+  const comp=$("#composer",n), ta=$("#say",n), send=$("#send",n), hint=$("#hint",n);
+  const my=TOKEN, alive=()=>TOKEN===my;
+  const L=spokenLang();
+  const intro = L==="Malayalam"
+    ? "ഇത് നിങ്ങൾക്കും എനിക്കും ഇടയിൽ മാത്രം. ഒന്ന് പറഞ്ഞുതരൂ — ഏറ്റവും കൂടുതൽ വേദനിച്ചത് എവിടെ?"
+    : L==="Hindi"
+      ? "यह सिर्फ़ आप और मेरे बीच है। एक बात बताइए — सबसे ज़्यादा चोट कहाँ लगी?"
+      : "This stays between us. Tell me one thing — where did it hurt the most?";
+  const ack = L==="Malayalam" ? "കിട്ടി. നന്ദി. ഇത് എനിക്കൊപ്പം സൂക്ഷിക്കും."
+    : L==="Hindi" ? "मिल गया। शुक्रिया। यह मेरे पास रहेगा।"
+    : "I've got it, thank you. It stays with me.";
+  let typing=!Ears.supported(), done=false, said="";
 
-  const room = VoiceRoom(n,{
-    next: async (onText)=>{
-      if(!AI.live()) throw {code:"offline"};
-      const told = askedSoFar(side);
-      const antiRepeat = told.length
-        ? `\n\nTHINGS YOU ALREADY SAID TO ${st.name} — never say anything like these again, never reuse their shape:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nSay only something new and human — a reflection ${st.name} has not heard yet. Do not dig with questions; close with <ENOUGH> now if nothing new is left to say.`
-        : "";
-      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat+(st.closing
-        ? `\n\n${st.name} just answered your last reply. Do NOT say anything new — one short warm closing line and end with the exact token <ENOUGH> and nothing else.`
-        : (st.qCount+1>=MAXQ ? `\n\nThis is your last reply — after ${st.name} says what they need to, close warmly with <ENOUGH> and say nothing more.` : ""))}, ...st.turns];
-      const full = await streamAI(turns,onText,"default");
-      const clean = String(full).replace(/<ENOUGH>/g,"").trim();
-      if(!/<ENOUGH>/.test(full) && clean.length>10 && told.some(q=>zzSim(q,clean)>0.6)){
-        Speak.reset();                                        // drop the repeated draft
-        let closer="";
-        try{
-          if(AI.live()) closer = String(await AI.chat([{role:"user",content:
-            `The private interview ended naturally just now. Write ONE short warm closing sentence that means "I now have what I need, thank you" — absolutely no question — then the exact token <ENOUGH>. ${LANG_LOCK()} Under 22 words.`}],{tier:"quick"})).trim();
-        }catch(e){}
-        if(/<ENOUGH>/.test(closer)) return closer;
-        return (closer?closer+" ":"")+(spokenLang()==="Malayalam"
-          ? "എനിക്ക് വേണ്ടത് കിട്ടി, നന്ദി. <ENOUGH>"
-          : spokenLang()==="Hindi" ? "मुझे जो चाहिए मिल गया, धन्यवाद। <ENOUGH>"
-          : "I now have what I need, thank you. <ENOUGH>");
-      }
-      const L=spokenLang();
-      if(L!=="English"){
-        const cleanBody=String(full).replace(/<ENOUGH>/g,"").trim();
-        if(cleanBody.length>6 && scriptPurity(L,cleanBody)<0.8){
-          const had=/<ENOUGH>/.test(full);
-          Speak.reset();
-          const fixed = await pureRewrite(L, cleanBody);
-          return had ? fixed+" <ENOUGH>" : fixed;
-        }
-      }
-      return full;
-    },
-    fallback: ()=>Local.next(side),
-    addMore: async (text, onText)=>{
-      if(!AI.live()) throw {code:"offline"};
-      const L = spokenLang();
-      const named = L==="Malayalam"?"Malayalam":L==="Hindi"?"Hindi":"English";
-      return await AI.chat([{role:"user",content:
-        `The private interview with ${st.name} is finished. ${st.name} has one last thing to add: "${text}".\n\nAcknowledge it warmly in one or two short sentences, entirely in ${named}${named==="English"?"":" and never mix languages"}. NO new questions. End with <ENOUGH>.`}],{onText, tier:"quick"});
-    },
-    onUser: t=>{ st.turns.push({role:"user",content:t}); save(); },
-    onAI: (text,enough)=>{
-      st.turns.push({role:"assistant",content:text}); st.qCount++; save();
-      room.setMeta(`listening ${Math.min(st.qCount+1,MAXQ)}/${MAXQ}`);
-      room.setRail(Math.round(st.qCount/MAXQ*100));
-      const asked=askedSoFar(side);
-      const last=asked[asked.length-1];
-      const repeated = !!(last && last.length>10 && asked.slice(0,-1).some(q=>zzSim(q,last)>0.6));
-      const asking = /\?/.test(String(text));
-      if(enough || repeated){ st.closing=false; return true; }
-      if(st.qCount>=MAXQ){
-        if(st.closing || !asking){ st.closing=false; return true; }
-        st.closing=true;                     // allow the answer to the capped question
-        return false;                        // then close after it
-      }
-      return false;
-    },
-    onFinish: ()=>{
-      st.done=true; save();
-      $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">${
-        S.mode==="pair" ? "Done — wait for the other room" : (side==="a"?"Seal this room":"Bring both sides together")}</button>`;
-      $("#fin",n).onclick=()=>{
-        if(S.mode==="pair") go("hold");
-        else go(side==="a"?"seal":"doubting");
-      };
-    }
-  });
+  function setState(t,v){ if(!alive())return; vst.textContent=t; vst.classList.toggle("live",!!v); }
+  function applyMode(){
+    comp.hidden=!typing; mainBtn.style.display=typing?"none":"grid";
+    kbd.setAttribute("aria-pressed",String(typing));
+    kbd.setAttribute("aria-label",typing?"Talk instead":"Type instead");
+    if(typing) setTimeout(()=>ta.focus(),100);
+  }
+  const fit=()=>{ ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,140)+"px"; send.disabled=!ta.value.trim(); };
+  ta.addEventListener("input",fit);
+  ta.addEventListener("keydown", e=>{ if(e.key==="Enter"&&!e.shiftKey&&innerWidth>700){ e.preventDefault(); seal(); } });
+  send.onclick=seal; kbd.onclick=()=>{ typing=!typing; applyMode(); };
+  $("#endBtn",n).onclick=endMediation;
+  vol.onclick=()=>{
+    Speak.enabled=!Speak.enabled;
+    vol.setAttribute("aria-pressed",String(Speak.enabled));
+    vol.innerHTML=(Speak.enabled?ICON.vol:ICON.mute)+'<span class="vacc">'+(Speak.enabled?"Voice on":"Muted")+'</span>';
+  };
 
-  room.setRail(Math.round(st.qCount/MAXQ*100));
-  if(st.done){ $("#cap",n).textContent="This room is closed."; $("#vstate",n).textContent="done";
-    $("#mainBtn",n).style.display="none"; $("#kbd",n).style.display="none"; $("#composer",n).hidden=true;
-    $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">Continue</button>`;
-    $("#fin",n).onclick=()=>{ if(S.mode==="pair") go("hold"); else go(side==="a"?"seal":"doubting"); };
-  } else room.speakNext();
+  function finish(){
+    st.done=true; save();
+    hint.innerHTML=`<button class="btn ${side}" id="fin">${
+      S.mode==="pair" ? "Done — wait for the other room"
+      : side==="a" ? "Seal this room"
+      : "Bring both sides together"}</button>`;
+    $("#fin",n).onclick=()=>{
+      if(S.mode==="pair") go("hold");
+      else go(side==="a"?"seal":"mediate");
+    };
+    setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; comp.hidden=true;
+  }
+  function seal(){
+    if(done) return;
+    const v=(said||ta.value).trim(); if(!v){ hint.textContent="Say it first — even one line is enough."; return; }
+    Ears.stop(false,true); done=true;
+    st.turns=[{role:"user",content:v}]; st.qCount=1; st.answers=[]; st.crossDone=true; save();
+    ucap.textContent=v; ucap.style.opacity=1;
+    cap.textContent=ack; setState("speaking",true);
+    try{ Speak.cancel(); Speak.feed(ack); Speak.flush(ack,()=>{ if(alive()) finish(); }); }catch(e){ finish(); }
+    setTimeout(()=>{ if(alive()&&!st.done) finish(); }, 12000);
+  }
+  function startListening(){
+    if(done||!alive()||Ears.listening||document.hidden) return;
+    ucap.textContent=""; setState("listening",true); mainBtn.dataset.live="1"; mainBtn.innerHTML=ICON.wave;
+    Ears.start({
+      partial:t=>{ if(alive()){ said=t; ucap.textContent=t; } },
+      final:t=>{ if(alive()){ said=t; ucap.textContent=t; seal(); } },
+      pauseMs:1600,
+      onHeld:()=>{ if(alive()&&!done){ mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.mic; setState("tap to talk",false); } }
+    });
+  }
+  mainBtn.onclick=()=>{ if(done) return; if(Ears.listening){ Ears.stop(true); return; } startListening(); };
 
-  wireTop(n,()=>{ if(confirm("Leave this room? Everything said here is kept.")) go(S.mode==="pair"?"pair":"setup"); });
+  wireTop(n,()=>{ if(confirm("Leave this room? What you said is kept.")) go(S.mode==="pair"?"pair":"setup"); });
+
+  if(st.done){ cap.textContent="This room is closed."; setState("done",false);
+    mainBtn.style.display="none"; kbd.style.display="none"; comp.hidden=true;
+    hint.innerHTML=`<button class="btn ${side}" id="fin">Continue</button>`;
+    $("#fin",n).onclick=()=>{ if(S.mode==="pair") go("hold"); else go(side==="a"?"seal":"mediate"); };
+    return n;
+  }
+
+  applyMode();
+  hint.textContent = typing ? "Type your side and press send — it stays private." : "Tap the mic and say it — nobody else hears it.";
+  cap.textContent=intro; setState("speaking",true);
+  try{ Speak.cancel(); Speak.feed(intro); Speak.flush(intro,()=>{ if(alive()&&!done&&!typing&&Ears.supported()) startListening(); }); }
+  catch(e){ startListening(); }
+  setTimeout(()=>{ if(alive()&&!done&&!typing&&Ears.supported()&&!Ears.listening) startListening(); }, 15000);
   return n;
 }
 
@@ -2318,13 +2318,13 @@ function Hold(){
       <div class="stack sm" style="text-align:center">
         <h2 class="h2">${ready?"Both rooms are closed.":`Waiting for ${esc(S[theirs].name)}`}</h2>
         <p class="lede" style="margin-inline:auto">${ready
-          ? "Nothing either of you said is shown to the other. Only the summary is shared."
+          ? "Nothing either of you said is shown to the other. Only the mediator hears both sides."
           : "Their room is still open. This updates by itself the moment they finish."}</p>
       </div>
       ${ready?"":`<div class="waiting"><i></i><span>Listening for their device</span></div>`}
     </div>
     <div class="stack">${ready?`<button class="btn bloom" id="g">Bring both sides together</button>`:""}</div>`);
-  if(ready) $("#g",n).onclick=()=>go("doubting");
+  if(ready) $("#g",n).onclick=()=>go("mediate");
   wireTop(n,null);
   return n;
 }
@@ -2462,20 +2462,13 @@ function Hold2(){
    on the one small thing that actually needs to happen.
    --------------------------------------------------------------- */
 function medContext(){
-  const pt = (qs,ii)=>qs.map((q,i)=>`Q: ${q}\nA: ${(S[ii].answers||[])[i]||"(answering)"}`).join("\n");
   return `Relationship: ${S.relation||"two people who know each other"} · About: "${S.topic||"something that happened"}"
 
 === ${S.a.name} said, privately ===
 ${sideText("a")}
 
 === ${S.b.name} said, privately ===
-${sideText("b")}
-
-=== clarifying round with ${S.a.name} ===
-${S.cross&&S.cross.a?pt(S.cross.a,"a"):"(none)"}
-
-=== clarifying round with ${S.b.name} ===
-${S.cross&&S.cross.b?pt(S.cross.b,"b"):"(none)"}`;
+${sideText("b")}`;
 }
 
 function medPlanPrompt(){
@@ -2483,7 +2476,7 @@ function medPlanPrompt(){
 
 ${medContext()}
 
-Before you write anything, quietly decide who is carrying more of the misunderstanding: compare the two accounts and the clarifying answers, and pick the person whose version conflicts more with the other's story. That person is who you will gently ask to look again through the other's eyes. The words "right" and "wrong" are banned.
+Before you write anything, quietly decide who is carrying more of the misunderstanding: compare the two accounts, and pick the person whose version conflicts more with the other's story. That person is who you will gently ask to look again through the other's eyes. The words "right" and "wrong" are banned.
 
 SAFETY: if either person's words describe physical abuse, coercion or a threat of violence, reply with exactly this JSON and nothing else: {"stop":true}
 
