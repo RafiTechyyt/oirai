@@ -220,6 +220,7 @@ button{cursor:pointer;background:none;border:none;padding:0}
 .rail i{display:block;height:100%;width:0%;border-radius:2px;transition:width .6s var(--ease)}
 .rail.a i{background:linear-gradient(90deg,var(--ember-deep),var(--ember))}
 .rail.b i{background:linear-gradient(90deg,var(--iris-deep),var(--iris))}
+.rail.bloom i{background:linear-gradient(90deg,var(--iris-deep),var(--bloom))}
 
 /* ---------- seal / handoff ---------- */
 .seal{display:grid;place-items:center;gap:26px;text-align:center;flex:1}
@@ -1172,6 +1173,14 @@ const Net = (()=>{
     let changed=false;
     SHARED.forEach(k=>{
       if(rem[k]===undefined) return;
+      if(k==="med"){                       // merge fields so live closures keep the same object
+        const m = (S.med && typeof S.med==="object") ? S.med : (S.med={});
+        let mm=false;
+        const rj=typeof rem[k]==="object" ? rem[k] : {};
+        for(const f in rj){ if(JSON.stringify(m[f])!==JSON.stringify(rj[f])){ m[f]=rj[f]; mm=true; } }
+        if(mm) changed=true;
+        return;
+      }
       if(JSON.stringify(rem[k])!==JSON.stringify(S[k])){ S[k]=rem[k]; changed=true; }
     });
     ["a","b"].forEach(seat=>{
@@ -1617,9 +1626,13 @@ function go(stage){ TOKEN++; Speak.cancel(); Ears.stop(false); S.stage=stage; sa
 function el(h){ const d=document.createElement("div"); d.innerHTML=h.trim(); return d.firstElementChild; }
 function stage(h){ const s=document.createElement("section"); s.innerHTML=h; return s; }
 
-const LIVE={"chamberA":1,"chamberB":1,"mediate":1}; let curStage=null;
+let curStage=null; const LIVE={"chamberA":1,"chamberB":1,"mediate":1};
+function syncRender(){                       // remote-sync path: never yank someone out of a live room
+  if(S.stage===curStage && LIVE[S.stage]) return;   // same live screen — don't tear it down mid-speech
+  if(S.stage!==curStage && LIVE[curStage]) return;  // other device moved on, but this one is mid-conversation
+  render();
+}
 function render(){
-  if(S.stage===curStage && LIVE[S.stage]) return;   // never tear down a live conversation on a remote sync
   curStage=S.stage;
   const map = {
     open:Open, setup:Setup, pair:Pair, hold:Hold,
@@ -1634,7 +1647,7 @@ function render(){
   n.classList.add("stage","on");
   app.appendChild(n);
 }
-Net.onChange(()=>{ if(document.visibilityState!=="hidden") render(); });
+Net.onChange(()=>{ if(document.visibilityState!=="hidden") syncRender(); });
 
 function topbar(title,back){
   return `<div class="topbar">
@@ -2198,7 +2211,7 @@ function Chamber(side){
   const ack = L==="Malayalam" ? "കിട്ടി. നന്ദി. ഇത് എനിക്കൊപ്പം സൂക്ഷിക്കും."
     : L==="Hindi" ? "मिल गया। शुक्रिया। यह मेरे पास रहेगा।"
     : "I've got it, thank you. It stays with me.";
-  let typing=!Ears.supported(), done=false, said="";
+  let typing=!Ears.supported(), done=false, said="", introDone=false;
 
   function setState(t,v){ if(!alive())return; vst.textContent=t; vst.classList.toggle("live",!!v); }
   function applyMode(){
@@ -2243,12 +2256,14 @@ function Chamber(side){
   function startListening(){
     if(done||!alive()||Ears.listening||document.hidden) return;
     ucap.textContent=""; setState("listening",true); mainBtn.dataset.live="1"; mainBtn.innerHTML=ICON.wave;
-    Ears.start({
+    const ok=Ears.start({
       partial:t=>{ if(alive()){ said=t; ucap.textContent=t; } },
       final:t=>{ if(alive()){ said=t; ucap.textContent=t; seal(); } },
       pauseMs:1600,
       onHeld:()=>{ if(alive()&&!done){ mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.mic; setState("tap to talk",false); } }
     });
+    if(!ok){ mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.mic; typing=true; applyMode();
+      hint.textContent="Type your side and press send — it stays private."; }
   }
   mainBtn.onclick=()=>{ if(done) return; if(Ears.listening){ Ears.stop(true); return; } startListening(); };
 
@@ -2265,6 +2280,7 @@ function Chamber(side){
   hint.textContent = typing ? "Type your side and press send — it stays private." : "Tap the mic and say it — nobody else hears it.";
   setState("reading",false); cap.textContent="";
   (async()=>{
+    if(introDone) return;
     let q=fallbackIntro(L, S.topic||"");
     try{
       if(!AI.live()) throw 0;
@@ -2275,11 +2291,12 @@ function Chamber(side){
       q=t;
     }catch(e){}
     if(!alive()||done) return;
+    introDone=true;
     cap.textContent=q; setState("speaking",true);
     try{ Speak.cancel(); Speak.feed(q); Speak.flush(q,()=>{ if(alive()&&!done&&!typing&&Ears.supported()) startListening(); }); }
     catch(e){ if(alive()&&!done) startListening(); }
   })();
-  setTimeout(()=>{ if(alive()&&!done&&!typing&&Ears.supported()&&!Ears.listening) startListening(); }, 20000);
+  setTimeout(()=>{ if(alive()&&!done&&!introDone&&!typing&&!Speak.busy&&Ears.supported()&&!Ears.listening) startListening(); }, 28000);
   return n;
 }
 
@@ -2560,11 +2577,13 @@ ${LANG_LOCK()}`;
 function Mediate(){
   Sky.setMerge(.95); Sky.setEnergy(.55); Sky.setFocus(1);
   const A=S.a.name, B=S.b.name, disp=s=>s==="a"?A:B;
-  const r=S.med={ wrong:"", opening:"", askW:"", askO:"", openingDone:false, aAns:"", bAns:"", aWho:"", bWho:"", res:"", done:false };
+  const r = (S.med && typeof S.med==="object" && "wrong" in S.med) ? S.med
+    : (S.med={ wrong:"", opening:"", askW:"", askO:"", openingDone:false, planClaimed:false, aAns:"", bAns:"", aWho:"", bWho:"", res:"", done:false });
   save();
   const my=TOKEN, alive=()=>TOKEN===my;
   let lastUser="";
   const n=stage(voiceShell({ title:T("mediator"), back:false, side:"bloom", name:T("mediator"), meta:T("speaking") }));
+  const mb=$("#mainBtn",n), kb=$("#kbd",n); mb.disabled=true; kb.disabled=true;   // stay quiet until the plan is ready
   const clean=s=>String(s).replace(/<ENOUGH>/g,"").trim();
 
   async function liveReply(promptFn, fallbackFn, onText, isClose){
@@ -2586,6 +2605,7 @@ function Mediate(){
 
   const room=VoiceRoom(n,{
     next: async (onText)=>{
+      if(!r.opening) return "";
       if(!r.openingDone){
         r.openingDone=true; save();
         const opening=`${r.opening}\n\n${disp(r.wrong)}, ${r.askW}`;
@@ -2622,19 +2642,30 @@ function Mediate(){
 
   const vs=$("#vstate",n), cp=$("#cap",n);
   cp.textContent=""; vs.textContent=T("thinking"); vs.classList.remove("live");
+  const enable=()=>{ if(!alive()) return; mb.disabled=false; kb.disabled=false; };
   (async()=>{
-    if(r.opening) return;                     // already planned (synced peer)
+    if(r.opening){ enable(); return; }                    // plan already arrived from the other device
+    if(r.planClaimed){                                     // other device is planning — wait for it
+      const iv=setInterval(()=>{
+        if(!alive() || S.stage!=="mediate"){ clearInterval(iv); return; }
+        if(r.done==="stop"){ clearInterval(iv); go("medCare"); return; }
+        if(r.opening){ clearInterval(iv); enable(); }
+      },900);
+      return;
+    }
+    r.planClaimed=true; save();
     try{
       if(!AI.live()) throw 0;
       const raw=await AI.chat([{role:"user",content:medPlanPrompt()}],{json:true,tier:"complex"});
       const p=pickJSON(raw);
-      if(p && p.stop){ await wait(350); if(alive()) go("medCare"); return; }
+      if(p && p.stop){ r.done="stop"; save(); await wait(350); if(alive()) go("medCare"); return; }
       if(!(p && p.opening && p.askW && p.askO)) throw 0;
       r.wrong=p.wrong==="b"?"b":"a"; r.opening=String(p.opening).trim(); r.askW=String(p.askW).trim(); r.askO=String(p.askO).trim(); save();
     }catch(e){
       const f=fallbackPlan(); r.wrong=f.wrong; r.opening=f.opening; r.askW=f.askW; r.askO=f.askO; save();
     }
     if(!alive() || r.done) return;
+    enable();
     room.speakNext();
   })();
 
