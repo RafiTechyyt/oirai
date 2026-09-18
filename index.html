@@ -747,11 +747,13 @@ const AI = {
   /* when the user speaks Malayalam/Hindi (or the owner set a language), the
      mediator replies in that language. Auto mode detects it from your words. */
   respondTurns(turns, opts){
-    if(opts && (opts.json || opts.tier==="quick")) return turns;
+    if(opts && opts.json) return turns;
+    let last=null;
+    for(let i=turns.length-1;i>=0;i--){ if(turns[i].role==="user"){ last=turns[i]; break; } }
+    const c = last ? String(last.content) : "";
+    if(/MEDIATOR ONLINE/i.test(c)) return turns;               // diagnostics keep their known answer
     let l = this.lang || "auto";
     if(l==="auto"){
-      const last = [...turns].reverse().find(t=>t.role==="user");
-      const c = last ? String(last.content) : "";
       if(/[\u0D00-\u0D7F]/.test(c)) l="ml-IN";
       else if(/[\u0900-\u097F]/.test(c)) l="hi-IN";
       else l="en";
@@ -1410,56 +1412,83 @@ function Admin(){
   const n = stage(`
     ${topbar("Host settings", true)}
     <div class="grow stack lg" style="padding-top:8px">
-      <div><h2 class="h2">Everything everyone sees, from here.</h2>
-        <p class="lede" style="margin-top:9px">Save once — provider keys, default language, and two-device rooms apply to every visitor on their next visit. Keys stay on the server; nothing is kept in the repo.</p></div>
-      <div class="notice" id="admMsg" hidden></div>
-      <div class="field"><span>Host password</span>
-        <input class="input" id="admPass" type="password" placeholder="ADMIN_TOKEN from Netlify" autocomplete="off">
-        <p class="tiny">The ADMIN_TOKEN you created in Netlify → Environment variables. This session only.</p></div>
-      <div class="field"><span>Default provider</span>
-        <select class="input" id="admProv">
-          <option value="groq">Groq</option>
-          <option value="openai">OpenAI · GPT-6 Astra</option>
-          <option value="gemini">Google Gemini</option>
-        </select>
-        <p class="tiny">Used when a visitor hasn't chosen one. The mediator can still fall back across providers.</p></div>
-      <div class="field"><span>Default language &amp; voice</span>
-        <select class="input" id="admLang">
-          <option value="auto">Auto (follow the browser)</option>
-          <option value="en-US">English — US</option>
-          <option value="en-GB">English — UK</option>
-          <option value="en-AU">English — Australia</option>
-          <option value="en-NZ">English — New Zealand</option>
-          <option value="en-CA">English — Canada</option>
-          <option value="en-IN">English — India</option>
-          <option value="ml-IN">മലയാളം — Malayalam</option>
-          <option value="hi-IN">हिन्दी — Hindi</option>
-        </select>
-        <p class="tiny">Everyone's listening, voice and replies default to this. Malayalam/Hindi speaking needs a matching voice on the device for best quality.</p></div>
-      <div class="field"><span>Firebase Realtime Database URL</span>
-        <input class="input" id="admFb" placeholder="https://your-project-default-rtdb.firebaseio.com">
-        <p class="tiny">Turns on two-device rooms for everyone. Leave empty for single-device use.</p></div>
-      <div class="card">
-        <div class="stack sm">
-          <div class="side-label"><span class="dot a"></span>Provider keys — stored on the server, never shown back</div>
-          <div class="field"><span>Groq key</span>
-            <input class="input mono" id="admKeyGroq" type="password" placeholder="gsk_…" autocomplete="off">
-            <label class="check"><input type="checkbox" id="clrGroq"> remove this key</label></div>
-          <div class="field"><span>OpenAI key</span>
-            <input class="input mono" id="admKeyOpenai" type="password" placeholder="sk-proj-…" autocomplete="off">
-            <label class="check"><input type="checkbox" id="clrOpenai"> remove this key</label></div>
-          <div class="field"><span>Gemini key</span>
-            <input class="input mono" id="admKeyGemini" type="password" placeholder="AIza…" autocomplete="off">
-            <label class="check"><input type="checkbox" id="clrGemini"> remove this key</label></div>
-        </div>
+      <div id="admLogin" class="stack lg">
+        <div><h2 class="h2">Host sign-in required</h2>
+          <p class="lede" style="margin-top:9px">This panel controls what every visitor sees — keys, language and two-device rooms. Sign in with the ADMIN_TOKEN from Netlify → Environment variables. Your session lasts about an hour in this tab.</p></div>
+        <div class="notice" id="admLoginMsg" hidden></div>
+        <div class="field"><span>Host password</span>
+          <input class="input" id="admPass" type="password" placeholder="ADMIN_TOKEN" autocomplete="current-password" enterkeyhint="go">
+          <p class="tiny">Set ADMIN_TOKEN in Netlify first, or the server refuses to let you in.</p></div>
+        <button class="btn bloom" id="admLoginBtn">Log in</button>
       </div>
-      <button class="btn bloom" id="admSave">Save for everyone</button>
-      <button class="btn ghost" id="admReload">Reload current config</button>
-      <div class="notice" id="admStatus" hidden></div>
+      <div id="admForm" class="stack lg" hidden>
+        <div><h2 class="h2">Everything everyone sees, from here.</h2>
+          <p class="lede" style="margin-top:9px">Save once — provider keys, default language, and two-device rooms apply to every visitor on their next visit. Keys stay on the server; nothing is kept in the repo.</p></div>
+        <div class="notice" id="admMsg" hidden></div>
+        <div class="field"><span>Default provider</span>
+          <select class="input" id="admProv">
+            <option value="groq">Groq</option>
+            <option value="openai">OpenAI · GPT-6 Astra</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
+          <p class="tiny">Used when a visitor hasn't chosen one. The mediator can still fall back across providers.</p></div>
+        <div class="field"><span>Default language &amp; voice</span>
+          <select class="input" id="admLang">
+            <option value="auto">Auto (follow the browser)</option>
+            <option value="en-US">English — US</option>
+            <option value="en-GB">English — UK</option>
+            <option value="en-AU">English — Australia</option>
+            <option value="en-NZ">English — New Zealand</option>
+            <option value="en-CA">English — Canada</option>
+            <option value="en-IN">English — India</option>
+            <option value="ml-IN">മലയാളം — Malayalam</option>
+            <option value="hi-IN">हिन्दी — Hindi</option>
+          </select>
+          <p class="tiny">Everyone's listening, voice and replies default to this. Malayalam/Hindi speaking needs a matching voice on the device for best quality.</p></div>
+        <div class="field"><span>Firebase Realtime Database URL</span>
+          <input class="input" id="admFb" placeholder="https://your-project-default-rtdb.firebaseio.com">
+          <p class="tiny">Turns on two-device rooms for everyone. Leave empty for single-device use.</p></div>
+        <div class="card">
+          <div class="stack sm">
+            <div class="side-label"><span class="dot a"></span>Provider keys — stored on the server, never shown back</div>
+            <div class="field"><span>Groq key</span>
+              <input class="input mono" id="admKeyGroq" type="password" placeholder="gsk_…" autocomplete="off">
+              <label class="check"><input type="checkbox" id="clrGroq"> remove this key</label></div>
+            <div class="field"><span>OpenAI key</span>
+              <input class="input mono" id="admKeyOpenai" type="password" placeholder="sk-proj-…" autocomplete="off">
+              <label class="check"><input type="checkbox" id="clrOpenai"> remove this key</label></div>
+            <div class="field"><span>Gemini key</span>
+              <input class="input mono" id="admKeyGemini" type="password" placeholder="AIza…" autocomplete="off">
+              <label class="check"><input type="checkbox" id="clrGemini"> remove this key</label></div>
+          </div>
+        </div>
+        <div class="split">
+          <button class="btn bloom" id="admSave">Save for everyone</button>
+          <button class="btn ghost" id="admReload">Reload</button>
+        </div>
+        <button class="btn ghost" id="admLogout">Log out — lock it again</button>
+        <div class="notice" id="admStatus" hidden></div>
+      </div>
     </div>`);
   const $id=x=>$("#"+x,n);
+  const tok=()=> sessionStorage.getItem("admTok")||"";
+  const authHeaders=(extra={})=>Object.assign({Accept:"application/json"}, extra, tok()?{"x-admin-token":tok()}:{});
   const show=(m,w)=>{ const e=$id("admMsg"); e.hidden=false; e.className="notice"+(w?" warn":""); e.innerHTML=m; };
   const status=(m,w)=>{ const e=$id("admStatus"); e.hidden=false; e.className="notice"+(w?" warn":""); e.innerHTML=m; };
+  const loginMsg=(m,w)=>{ const e=$id("admLoginMsg"); e.hidden=false; e.className="notice"+(w?" warn":""); e.innerHTML=m; };
+  async function checkAuth(){
+    try{
+      const r=await fetch(cfgUrl+"?auth=1", {headers:authHeaders()});
+      const j=await r.json().catch(()=>null);
+      const on=!!(j&&j.authed);
+      $id("admLogin").hidden=on; $id("admForm").hidden=!on;
+      if(on) load();
+      return on;
+    }catch(e){
+      loginMsg("Couldn't reach the config endpoint — open the app on the Netlify-hosted site.", true);
+      return false;
+    }
+  }
   async function load(){
     try{
       const r=await fetch(cfgUrl);
@@ -1475,12 +1504,12 @@ function Admin(){
       $id("admKeyGemini").placeholder  = k.gemini ? "AIza — already set"     : "AIza…";
       show(j.adminSet
         ? "This config is live and applies to everyone."
-        : "No saved config yet. Enter your ADMIN_TOKEN, set the defaults, save once.");
+        : "No saved config yet — set the defaults and save once.");
     }catch(e){
       show("Couldn't load config: "+e.message, true);
     }
   }
-  const body=()=>{
+  const bodyForm=()=>{
     const b={
       provider:$id("admProv").value,
       accent:$id("admLang").value,
@@ -1497,19 +1526,39 @@ function Admin(){
     return b;
   };
   wireTop(n,()=>go("open"));
+  $id("admLoginBtn").onclick=async()=>{
+    const pass=$id("admPass").value.trim();
+    if(!pass) return loginMsg("Type the host password first.", true);
+    $id("admLoginBtn").disabled=true; $id("admLoginMsg").hidden=true;
+    try{
+      const r=await fetch(cfgUrl+"?login=1",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pass})});
+      const j=await r.json().catch(()=>null);
+      $id("admLoginBtn").disabled=false;
+      if(r.status===401){ loginMsg(esc((j&&j.message)||"Wrong host password."), true); return; }
+      if(!r.ok){ loginMsg("Sign-in failed — HTTP "+r.status+".", true); return; }
+      sessionStorage.setItem("admTok", pass);
+      $id("admPass").value="";
+      await checkAuth();
+      loginMsg("Signed in.", false);
+    }catch(e){ $id("admLoginBtn").disabled=false; loginMsg("Couldn't reach the server: "+esc(e.message), true); }
+  };
+  $id("admPass").addEventListener("keydown",e=>{ if(e.key==="Enter") $id("admLoginBtn").click(); });
+  $id("admLogout").onclick=async()=>{
+    try{ await fetch(cfgUrl+"?logout=1",{method:"POST",headers:authHeaders()}); }catch(e){}
+    sessionStorage.removeItem("admTok");
+    $id("admForm").hidden=true; $id("admLogin").hidden=false;
+  };
   $id("admSave").onclick=async()=>{
-    const t=$id("admPass").value.trim();
-    if(!t) return show("Enter your ADMIN_TOKEN first (set it in Netlify → Environment variables).", true);
     const btn=$id("admSave"); btn.disabled=true; status("Saving…");
     try{
-      const r=await fetch(cfgUrl,{method:"POST",headers:{"Content-Type":"application/json","x-admin-token":t},body:JSON.stringify(body())});
+      const r=await fetch(cfgUrl,{method:"POST",headers:{"Content-Type":"application/json","x-admin-token":tok()},body:JSON.stringify(bodyForm())});
       if(r.status===401){
-        status("Wrong ADMIN_TOKEN — the server rejected it.", true);
-        show("Check the ADMIN_TOKEN value in Netlify's dashboard.", true);
+        status("Session expired or closed — log in again.", true);
+        sessionStorage.removeItem("admTok");
+        $id("admForm").hidden=true; $id("admLogin").hidden=false;
       }else if(r.ok){
         const j=await r.json().catch(()=>null);
         status(j && j.ok ? "Saved. Visitors pick this up on their next visit." : "Saved, but no confirmation came back.");
-        $id("admPass").value=""; $id("admProv").dataset.prev=$id("admProv").value;
         await load(); await AI.fetchConfig();
       }else{
         status("Save failed — HTTP "+r.status+".", true);
@@ -1520,7 +1569,7 @@ function Admin(){
     btn.disabled=false;
   };
   $id("admReload").onclick=async()=>{ await load(); status("Reloaded."); };
-  load();
+  checkAuth();
   return n;
 }
 
@@ -2412,7 +2461,7 @@ function openSettings(){
         <option value="ml-IN">മലയാളം — Malayalam</option>
         <option value="hi-IN">हिन्दी — Hindi</option>
       </select>
-      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
+      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. Selecting Malayalam or Hindi forces replies in that language; in auto mode, the mediator detects it from what you type. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
     <button class="btn ghost" id="saveCfg">Save and reload</button>
     <button class="btn ghost" id="testBtn">Test the connection</button>
     <div class="notice" id="testOut" hidden></div>
@@ -2426,6 +2475,18 @@ function openSettings(){
   const provSel=$("#provIn",body), keyIn=$("#keyIn",body), keyTip=$("#provTip",body);
   const langIn=$("#langIn",body);
   langIn.value=store.get("lang", null)||store.get("accent", null)||"auto";
+  langIn.onchange=()=>{
+    const v=langIn.value;
+    store.set("lang", v); store.del("accent");
+    AI.lang=v;
+    Speak.pick();
+    if(Speak.enabled && Speak.ready()){
+      const sample = /^ml/i.test(v) ? "എനിക്ക് മലയാളത്തിൽ ചിന്തിക്കാനും പറയാനും കഴിയും."
+        : /^hi/i.test(v) ? "मैं हिंदी में सोच और बोल सकती हूँ।"
+        : "I can listen and reply in this language.";
+      Speak.cancel(); Speak.reset(); Speak.flush(sample, ()=>{});
+    }
+  };
   const proxyIn=$("#proxyIn",body);
   proxyIn.value = AI.proxyBase && !AI.proxyBase.startsWith("/") ? AI.proxyBase : "";
   const keys={groq:AI.keys.groq, openai:AI.keys.openai, gemini:AI.keys.gemini};
