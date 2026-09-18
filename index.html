@@ -361,6 +361,10 @@ button{cursor:pointer;background:none;border:none;padding:0}
 .vbtn[disabled]{opacity:.3;pointer-events:none}
 .vbtn.sm{width:48px;height:48px}
 .vbtn.sm svg{width:19px;height:19px}
+.mutebtn{width:auto;height:42px;padding:0 16px;border-radius:999px;display:flex;gap:7px;align-items:center}
+.mutebtn svg{width:18px;height:18px}
+.mutebtn .vacc{font-size:13px;font-weight:600;letter-spacing:.02em}
+.mutebtn[aria-pressed="false"]{color:var(--ember);border-color:rgba(255,99,145,.45)}
 
 .transcript{max-height:34dvh;overflow-y:auto;padding:4px 0}
 .tline{font-size:14px;line-height:1.55;padding:7px 0;border-bottom:1px solid var(--hair-2)}
@@ -1665,7 +1669,7 @@ function voiceShell({title,back,name,side,meta}){
       <div class="vctl">
         <button class="vbtn sm" id="kbd" aria-label="Type instead">${ICON.kbd}</button>
         <button class="vbtn main" id="mainBtn" aria-label="Talk">${ICON.mic}</button>
-        <button class="vbtn sm" id="volBtn" aria-label="Voice on or off">${Speak.enabled?ICON.vol:ICON.mute}</button>
+        <button class="vbtn mutebtn" id="volBtn" aria-label="Mediator voice on or off" aria-pressed="${Speak.enabled}">${Speak.enabled?ICON.vol:ICON.mute}<span class="vacc">${Speak.enabled?"Voice on":"Muted"}</span></button>
       </div>
       <p class="tiny" id="hint" style="text-align:center;padding-top:8px"></p>
       <p class="tiny" style="text-align:center;padding-top:4px"><button class="linkish" id="endBtn">End this mediation</button></p>
@@ -1684,15 +1688,27 @@ function VoiceRoom(n, cfg){
   const alive = ()=>TOKEN===my;
   function setState(txt,live){ if(!alive())return; vstate.textContent=txt; vstate.classList.toggle("live",!!live); }
 
-  vol.onclick=()=>{ Speak.enabled=!Speak.enabled; vol.innerHTML=Speak.enabled?ICON.vol:ICON.mute; };
+  vol.onclick=()=>{
+    Speak.enabled=!Speak.enabled;
+    vol.setAttribute("aria-pressed",String(Speak.enabled));
+    vol.setAttribute("aria-label",Speak.enabled?"Mediator voice on":"Mediator voice muted");
+    vol.innerHTML=(Speak.enabled?ICON.vol:ICON.mute)+'<span class="vacc">'+(Speak.enabled?"Voice on":"Muted")+'</span>';
+    refreshHint();
+  };
   kbd.onclick=()=>{ typing=!typing; applyMode(); };
   $("#endBtn",n).onclick=endMediation;
+  function refreshHint(){
+    hint.textContent = typing ? "" : (Ears.supported()
+      ? (Speak.enabled ? "It listens while you talk, and answers when you pause."
+         : "Voice muted — say what you need, and read the mediator's reply on screen.")
+      : "Voice input isn't available in this browser — type instead.");
+  }
   function applyMode(){
     comp.hidden=!typing;
     mainBtn.style.display = typing?"none":"grid";
     kbd.setAttribute("aria-pressed",String(typing));
     kbd.setAttribute("aria-label",typing?"Talk instead":"Type instead");
-    hint.textContent = typing ? "" : (Ears.supported()? "It listens while you talk, and answers when you pause." : "Voice input isn't available in this browser — type instead.");
+    refreshHint();
     if(typing) setTimeout(()=>ta.focus(),100);
   }
   const fit=()=>{ ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,140)+"px"; send.disabled=!ta.value.trim(); };
@@ -1751,7 +1767,7 @@ function VoiceRoom(n, cfg){
     let full="", started=false;
     const stream = ({text})=>{
       if(!alive()||my!==flow||barging) return;
-      if(!started){ started=true; setState("speaking",true); fadeUcap(); }
+      if(!started){ started=true; setState(Speak.enabled?"speaking":"replying",true); fadeUcap(); }
       cap.textContent = text.replace("<ENOUGH>","").trim();
       Speak.feed(text.replace("<ENOUGH>",""));
     };
