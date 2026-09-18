@@ -2603,6 +2603,50 @@ function Mediate(){
     return isClose ? clean(t)+" <ENOUGH>" : clean(t);
   }
 
+  const P = (en,ml,hi)=> spokenLang()==="Malayalam" ? ml : spokenLang()==="Hindi" ? hi : en;
+  const carryPct = ()=>{
+    const pa = S.report && S.report.contribution && Number(S.report.contribution.a.pct);
+    if(isFinite(pa)) return pa;
+    const wa=words(sideText("a")), wb=words(sideText("b"));
+    return clamp(Math.round(50+(wa-wb)/Math.max(wa+wb||1,1)*18),30,70);
+  };
+  function fallbackPlan(){
+    const wrong=carryPct()>=50?"a":"b", o=wrong==="a"?"b":"a", W=disp(wrong), O=disp(o);
+    return {
+      wrong,
+      opening: P(
+        `Both of you came here hoping to be heard, and somewhere in this argument each of you went quiet about the thing that mattered most. That's the split I keep coming back to. ${W}, let's look at that same moment from ${O}'s side — not to prove anything, only to see what you couldn't from where you stood.`,
+        `${A}, ${B} — രണ്ടുപേരുടെയും വാക്കുകൾ ഞാൻ കേട്ടു. ഈ വഴക്കിനുള്ളിൽ രണ്ടുപേർക്കും ഏറ്റവും വേദനിപ്പിച്ച കാര്യം പറയാതെ പോയതാണ് — അതാണ് ഞാൻ തിരികെ വരുന്ന നിമിഷം. ${W}, ആ നിമിഷം ${O}യുടെ കണ്ണിലൂടെ നോക്കാം — ഒന്നും തെളിയിക്കാനല്ല, നിങ്ങൾ നിന്നിടത്തു നിന്ന് കാണാനാകാത്തത് കാണാനാണ്.`,
+        `${A}, ${B} — मैंने आप दोनों की बातें सुनीं। इस झगड़े के बीच दोनों वो बात नहीं कह पाए जो सबसे ज़रूरी थी — यही वो पल है जहाँ कहानियाँ बँट जाती हैं। ${W}, आइए उसी पल को ${O} की नज़र से देखें — कुछ साबित करने के लिए नहीं, बस वो देखने के लिए जो आप वहाँ खड़े होकर नहीं देख पाए।`
+      ),
+      askW: P(
+        `${W}, sit inside that moment from ${O}'s side now — what do you think they actually felt, and what were they trying to protect?`,
+        `${W}, ആ നിമിഷം ${O}യുടെ വശത്തുനിന്ന് നോക്കൂ — അവർക്ക് ശരിക്കും എന്താണ് തോന്നിയത്?`,
+        `${W}, उसी पल को ${O} की तरफ़ से देखिए — उन्हें सच में क्या महसूस हुआ होगा?`
+      ),
+      askO: P(
+        `${O}, in that same moment — what were you wishing ${W} would understand, and never said out loud?`,
+        `${O}, ആ നിമിഷം — ${W} മനസ്സിലാക്കണമെന്ന് നിങ്ങൾ ആഗ്രഹിച്ചത് എന്തായിരുന്നു?`,
+        `${O}, उसी पल में — आप चाहते थे ${W} क्या समझे, जो आपने कभी ज़ोर से नहीं कहा?`
+      )
+    };
+  }
+  function bridgeFallback(ans){
+    const o = r.wrong==="a"?"b":"a", W=disp(r.wrong), O=disp(o);
+    const lead = String(ans||"").trim();
+    return P(
+      `${lead?`"${lead.slice(0,80)}" — `:""}that took something to say, and I hear why. ${W}, thank you — I can see that moment differently now. ${O}, help me hold it from your side too: ${r.askO||""}`,
+      `${W}, ഇത് പറയാൻ ധൈര്യം വേണ്ടിവന്നു — നന്ദി. ${O}, ആ നിമിഷം നിങ്ങളുടെ വശത്തുനിന്നും കേൾക്കട്ടെ: ${r.askO||""}`,
+      `${W}, यह कहने के लिए हिम्मत चाहिए थी — शुक्रिया। ${O}, उसी पल को आपकी तरफ़ से भी सुनना चाहता हूँ: ${r.askO||""}`
+    );
+  }
+  function resFallback(){
+    return P(
+      `${A} and ${B}, each of you just showed me the same thing from opposite ends — each of you wanted to matter to the other, and neither of you heard it until now. Neither of you is wrong. This week, say the one thing you've been waiting to be asked, out loud, plainly, once. That's the whole fix. I'm glad you stayed in the room.`,
+      `${A}യും ${B}യും — രണ്ടുപേരും ഇന്ന് ഒരേ കാര്യം വിപരീത വശങ്ങളിൽ നിന്ന് കാണിച്ചു: ഓരോരുത്തരും മറ്റേയാൾക്ക് തങ്ങൾ പ്രധാനമാണെന്ന് വേണം. ആരും തെറ്റല്ല. ഈ ആഴ്ച, കാത്തിരുന്ന ചോദ്യം ഉറക്കെ ചോദിക്കൂ — സത്യസന്ധമായി, ഒരിക്കൽ. അതാണ് വേണ്ടത്. ഇവിടെ തങ്ങിയതിന് നന്ദി.`,
+      `${A} और ${B}, आप दोनों ने आज वही चीज़ उलटी ओर से दिखाई — दोनों चाहते थे कि दूसरा उन्हें कीमती समझे। कोई ग़लत नहीं है। इस हफ़्ते वो बात कहिए जिसका जवाब आप इंतज़ार कर रहे थे — साफ़, एक बार। बस इतना ही। यहाँ रुकने के लिए धन्यवाद।`
+    );
+  }
   const room=VoiceRoom(n,{
     next: async (onText)=>{
       if(!r.opening) return "";
@@ -2656,7 +2700,10 @@ function Mediate(){
     r.planClaimed=true; save();
     try{
       if(!AI.live()) throw 0;
-      const raw=await AI.chat([{role:"user",content:medPlanPrompt()}],{json:true,tier:"complex"});
+      const raw=await Promise.race([
+        AI.chat([{role:"user",content:medPlanPrompt()}],{json:true,tier:"complex"}),
+        wait(60000).then(()=>{ throw {code:"timed_out", message:"The mediator took too long planning"}; })
+      ]);
       const p=pickJSON(raw);
       if(p && p.stop){ r.done="stop"; save(); await wait(350); if(alive()) go("medCare"); return; }
       if(!(p && p.opening && p.askW && p.askO)) throw 0;
