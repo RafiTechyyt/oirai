@@ -1140,7 +1140,7 @@ try { globalThis.AI = AI; } catch (e) {}
    --------------------------------------------------------------- */
 const Net = (()=>{
   let kind="local", db=null, fbUrl=null, roomUrl="", poll=null, listeners=[], lastSeen="";
-  const SHARED = ["stage","relation","topic","report","cross","round","signed"];
+  const SHARED = ["stage","relation","topic","report","cross","round","signed","med"];
 
   async function init(){
     const cloud = AI.cfg && AI.cfg.firebaseUrl ? String(AI.cfg.firebaseUrl) : "";
@@ -1617,7 +1617,10 @@ function go(stage){ TOKEN++; Speak.cancel(); Ears.stop(false); S.stage=stage; sa
 function el(h){ const d=document.createElement("div"); d.innerHTML=h.trim(); return d.firstElementChild; }
 function stage(h){ const s=document.createElement("section"); s.innerHTML=h; return s; }
 
+const LIVE={"chamberA":1,"chamberB":1,"mediate":1}; let curStage=null;
 function render(){
+  if(S.stage===curStage && LIVE[S.stage]) return;   // never tear down a live conversation on a remote sync
+  curStage=S.stage;
   const map = {
     open:Open, setup:Setup, pair:Pair, hold:Hold,
     chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
@@ -2556,141 +2559,86 @@ ${LANG_LOCK()}`;
 
 function Mediate(){
   Sky.setMerge(.95); Sky.setEnergy(.55); Sky.setFocus(1);
-  const A=S.a.name, B=S.b.name;
-  const n=stage(`
-    ${topbar(T("mediator"),false)}
-    <div class="whobar"><span class="dot bloom"></span>
-      <span class="name">${esc(T("mediator"))}</span>
-      <span class="meta" id="mdmeta">${esc(T("step"))} 1 ${esc(T("of"))} 6</span></div>
-    <div class="rail bloom"><i id="mdrail" style="width:0%"></i></div>
-    <div class="voice grow">
-      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">${esc(T("speaking"))}</span></div></div>
-      <div class="caption" id="cap" style="white-space:pre-wrap"></div>
-      <div id="mdask"></div>
-      <p class="tiny" id="mdhint" style="text-align:center;padding-top:8px"></p>
-    </div>`);
-  wireTop(n,null);
-
-  const cap=$("#cap",n), vst=$("#vstate",n), meta=$("#mdmeta",n), rail=$("#mdrail",n),
-        hint=$("#mdhint",n), askBox=$("#mdask",n);
-  const my=TOKEN;
-  const alive=()=>TOKEN===my;
-  const r=S.med={ idx:0, wrong:"a", opening:"", askW:"", askO:"", aAns:"", bAns:"", respW:"", respO:"", res:"", done:false };
+  const A=S.a.name, B=S.b.name, disp=s=>s==="a"?A:B;
+  const r=S.med={ wrong:"", opening:"", askW:"", askO:"", openingDone:false, aAns:"", bAns:"", aWho:"", bWho:"", res:"", done:false };
   save();
+  const my=TOKEN, alive=()=>TOKEN===my;
+  let lastUser="";
+  const n=stage(voiceShell({ title:T("mediator"), back:false, side:"bloom", name:T("mediator"), meta:T("speaking") }));
+  const clean=s=>String(s).replace(/<ENOUGH>/g,"").trim();
 
-  let step=0; const STEPS=5;
-  function progress(){ const s=Math.min(step+1,STEPS); meta.textContent=`${T("step")} ${s} ${T("of")} ${STEPS}`; rail.style.width=Math.round(s/STEPS*100)+"%"; }
-
-  function speakText(t, onEnd){
-    vst.textContent=Speak.enabled?T("speaking"):T("reading"); vst.classList.add("live");
-    cap.textContent=t;
-    let spoke=false;
-    try{ Speak.cancel(); Speak.feed(t); Speak.flush(t,()=>{ spoke=true; if(alive()&&vst) vst.textContent=T("done"); if(onEnd) setTimeout(onEnd,700); }); }catch(e){}
-    setTimeout(()=>{ if(!spoke && onEnd) onEnd(); },12000);
-  }
-  function thinking(){ vst.textContent=T("reading"); vst.classList.remove("live"); cap.textContent=T("thinking"); }
-
-  function flow(t, next){
-    step++; progress(); askBox.innerHTML=""; hint.textContent="";
-    hint.innerHTML=`<a href="javascript:void 0" id="mdfwd" style="font-size:13px;color:var(--bloom)">${esc(T("next"))} →</a>`;
-    let went=false;
-    $("#mdfwd",n).onclick=()=>{ if(!went){ went=true; try{ Speak.cancel(); }catch(e){} next(); } };
-    speakText(t, ()=>{ if(!went){ went=true; next(); } });
-  }
-
-  function askPerson(q, next){
-    step++; progress();
-    vst.textContent=T("your turn"); vst.classList.remove("live");
-    cap.textContent=q;
-    askBox.innerHTML=`<div class="composer" style="border-top:1px solid var(--hair);padding-top:10px;margin-top:12px">
-        <textarea class="ta" id="mdtalk" rows="2" placeholder="${esc(T("phSay"))}"></textarea>
-        <div class="btnrow" style="margin-top:8px">
-          <button class="btn sm ghost" id="mdmic" style="${Ears.supported()?"":"display:none"}">${ICON.mic} ${esc(T("say"))}</button>
-          <button class="btn sm bloom" id="mdok">${esc(T("doneKeep"))}</button>
-        </div></div>`;
-    let said="";
-    const ta=$("#mdtalk",n), ok=$("#mdok",n), mic=$("#mdmic",n);
-    const settle=()=>{
-      const v=(said||ta.value).trim(); if(!v){ hint.textContent=T("first"); return; }
-      Ears.stop(false,true);
-      askBox.innerHTML=""; hint.textContent="";
-      next(v);
-    };
-    mic.onclick=()=>{
-      if(Ears.listening){ Ears.stop(true); return; }
-      said=""; ta.value=""; hint.textContent=T("listening"); mic.innerHTML=ICON.stop; mic.classList.add("bloom");
-      Ears.start({ partial:t=>{ ta.value=t; }, final:t=>{ said=t; ta.value=t; },
-        onHeld:()=>{ if(alive()){ hint.textContent=T("catch"); mic.innerHTML=ICON.mic; mic.classList.remove("bloom"); } } });
-    };
-    ok.onclick=settle;
-    ta.addEventListener("keydown",e=>{ if(e.key==="Enter") settle(); });
-    setTimeout(()=>ta.focus(),80);
-    try{ Speak.cancel(); Speak.feed(q); Speak.flush(q,()=>{}); }catch(e){}
-  }
-
-  async function liveCall(promptFn, fallbackFn){
-    thinking();
+  async function liveReply(promptFn, fallbackFn, onText, isClose){
+    let t="";
     try{
       if(!AI.live()) throw {code:"offline"};
-      const t=String(await AI.chat([{role:"user",content:promptFn()}],{tier:"default",
-        onText:({text:s})=>{ if(alive()) cap.textContent=s; }})).trim();
-      if(!t) throw 0;
-      return t;
-    }catch(e){ return fallbackFn(); }
-  }
-  function bridgeFallback(ans){
-    const r=S.med||{}, A=S.a.name, B=S.b.name, L=spokenLang(),
-          askO=(r.askO||"").split("?").slice(0,2).map(x=>x.trim()).filter(Boolean).join("?")+(r.askO&&!r.askO.endsWith("?")?"?":"");
-    if(L==="Malayalam") return `${A}, അത് പറയാൻ ധൈര്യം വേണം — നന്ദി. ${B}, ഇപ്പോൾ നിങ്ങളുടെ ഊഴം. ${askO}`;
-    if(L==="Hindi") return `${A}, यह कहने के लिए हिम्मत चाहिए — शुक्रिया। ${B}, अब आपकी बारी है। ${askO}`;
-    return `${A} — that takes something to say, and I hear it. ${B}, now it's your turn. ${askO}`;
-  }
-  function resFallback(){
+      t=String(await AI.chat([{role:"user",content:promptFn()}],{onText,tier:"default"})).trim();
+    }catch(e){
+      t=fallbackFn();
+    }
+    if(!t || t.length<4) t=fallbackFn();
     const L=spokenLang();
-    if(L==="Malayalam") return `${A}, ${B} — ഇന്ന് നിങ്ങൾ രണ്ടുപേരുടെയും വാക്കുകൾ ഞാൻ കേട്ടു. ഈ ആഴ്ച ഒരു ശാന്തമായ സംഭാഷണം മതി: ഓരോരുത്തരും എന്താണ് കേട്ടത് എന്ന് പറയുക. നിങ്ങൾ ഇവിടെ വന്നത് തന്നെ വലിയ കാര്യമാണ്.`;
-    if(L==="Hindi") return `${A}, ${B} — आज मैंने आप दोनों की बात सुनी। इस हफ़्ते एक शांत बातचीत ही काफ़ी है: हर कोई बताए कि उसने क्या सुना। आप दोनों का यहाँ आना ही मायने रखता है।`;
-    return `${A} and ${B} — I heard both of you today, and it took care. That's the thing that will actually help this week: one quiet conversation, where each of you says what they heard. You both showed up here, and that means something.`;
-  }
-  function fallbackPlan(){
-    const L=spokenLang(), wrong="a";
-    if(L==="Malayalam") return {wrong,opening:`${A}, ${B} — ഞാൻ രണ്ടുപേരുടെയും വാക്കുകൾ കേട്ടു. ഈ നിശബ്ദതയ്ക്കുള്ളിൽ ഒരു തെറ്റിദ്ധാരണയുണ്ട്. ${A}, നിങ്ങൾക്ക് എന്താണ് തോന്നിയതെന്ന് ഞാൻ കേട്ടു — ഇപ്പോൾ അത് ${B}യുടെ കണ്ണിലൂടെ കാണാൻ ശ്രമിക്കൂ.`,askW:`${A}, ആ നിമിഷം ${B}യുടെ വശത്തുനിന്ന് നോക്കുമ്പോൾ നിങ്ങൾ എന്താണ് കാണുന്നത്?`,askO:`${B}, ആ നിമിഷം ശരിക്കും എന്തായിരുന്നു — നിങ്ങളുടെ വാക്കുകളിൽ പറയൂ.`};
-    if(L==="Hindi") return {wrong,opening:`${A}, ${B} — मैंने दोनों की बातें सुनीं। इस ख़ामोशी के पीछे एक ग़लतफ़हमी है। ${A}, मैंने सुना है कि आप क्या महसूस कर रहे हैं — अब उसे ${B} की नज़र से देखने की कोशिश कीजिए।`,askW:`${A}, वह पल ${B} की तरफ़ से देखने पर आपको क्या दिखता है?`,askO:`${B}, वह पल सच में क्या था — अपने शब्दों में बताइए।`};
-    return {wrong,opening:`${A} and ${B} — I've heard both of you, and I'm not going to hand you a report. Underneath this silence there is one misunderstanding. ${A}, I heard what you've been feeling — now I want you to look at that same moment from ${B}'s side.`,askW:`${A}, when you look at that moment from ${B}'s side, what do you see now?`,askO:`${B}, in your own words — what was that moment really?`};
+    if(L!=="English" && scriptPurity(L,clean(t))<0.8){
+      const fr=await pureRewrite(L, clean(t)).catch(()=>"");
+      if(fr && fr.length>4) t=fr;
+    }
+    return isClose ? clean(t)+" <ENOUGH>" : clean(t);
   }
 
+  const room=VoiceRoom(n,{
+    next: async (onText)=>{
+      if(!r.openingDone){
+        r.openingDone=true; save();
+        const opening=`${r.opening}\n\n${disp(r.wrong)}, ${r.askW}`;
+        onText({text:opening});
+        return opening;
+      }
+      if(!r.aAns){
+        r.aAns=lastUser; r.aWho=S.mode==="pair"?(S.seat||r.wrong):r.wrong; save();
+        return await liveReply(()=>medBridgePrompt(r.aAns), ()=>bridgeFallback(r.aAns), onText, false);
+      }
+      if(!r.bAns){
+        r.bAns=lastUser; r.bWho=S.mode==="pair"?(S.seat||(r.wrong==="a"?"b":"a")):(r.wrong==="a"?"b":"a"); save();
+        const close=await liveReply(()=>medResolvePrompt(), ()=>resFallback(), onText, true);
+        r.res=clean(close); save();
+        return close;
+      }
+      return "<ENOUGH>";
+    },
+    fallback: ()=>{
+      if(!r.openingDone){
+        const f=fallbackPlan(); r.wrong=f.wrong; r.opening=f.opening; r.askW=f.askW; r.askO=f.askO; r.openingDone=true; save();
+        return `${f.opening}\n\n${disp(f.wrong)}, ${f.askW}`;
+      }
+      if(!r.aAns) return bridgeFallback(lastUser);
+      return resFallback();
+    },
+    onUser: t=>{ lastUser=t; save(); },
+    onAI: (t,enough)=> enough,
+    onFinish: ()=>{
+      r.done=true; save();
+      setTimeout(()=>{ if(alive() && S.stage==="mediate") go("medEnd"); }, 1600);
+    }
+  });
+
+  const vs=$("#vstate",n), cp=$("#cap",n);
+  cp.textContent=""; vs.textContent=T("thinking"); vs.classList.remove("live");
   (async()=>{
-    let plan;
+    if(r.opening) return;                     // already planned (synced peer)
     try{
-      if(!AI.live()) throw {code:"offline"};
+      if(!AI.live()) throw 0;
       const raw=await AI.chat([{role:"user",content:medPlanPrompt()}],{json:true,tier:"complex"});
       const p=pickJSON(raw);
-      if(p && p.stop) return (go("medCare"), stage(""));
-      plan={wrong:p.wrong==="b"?"b":"a", opening:String(p.opening||"").trim(), askW:String(p.askW||"").trim(), askO:String(p.askO||"").trim()};
-      if(!plan.opening||!plan.askW||!plan.askO) throw 0;
-    }catch(e){ plan=fallbackPlan(); }
-    if(!alive()) return;
-    r.wrong=plan.wrong; r.opening=plan.opening; r.askW=plan.askW; r.askO=plan.askO;
-    const W=plan.wrong==="a"?A:B, O=plan.wrong==="a"?B:A;
-    save();
-    await wait(300);
-    if(!alive()) return;
-    flow(plan.opening, ()=>{
-      askPerson(plan.askW, async wAns=>{
-        r[plan.wrong==="a"?"aAns":"bAns"]=wAns; save();
-        r.turnB=await liveCall(()=>medBridgePrompt(wAns), ()=>bridgeFallback(wAns));
-        if(!alive()) return;
-        flow(r.turnB, ()=>{
-          askPerson(plan.askO, async oAns=>{
-            r[plan.wrong==="a"?"bAns":"aAns"]=oAns; save();
-            r.res=await liveCall(medResolvePrompt, resFallback);
-            if(!alive()) return;
-            r.done=true; save();
-            flow(r.res, ()=>go("medEnd"));
-          });
-        });
-      });
-    });
+      if(p && p.stop){ await wait(350); if(alive()) go("medCare"); return; }
+      if(!(p && p.opening && p.askW && p.askO)) throw 0;
+      r.wrong=p.wrong==="b"?"b":"a"; r.opening=String(p.opening).trim(); r.askW=String(p.askW).trim(); r.askO=String(p.askO).trim(); save();
+    }catch(e){
+      const f=fallbackPlan(); r.wrong=f.wrong; r.opening=f.opening; r.askW=f.askW; r.askO=f.askO; save();
+    }
+    if(!alive() || r.done) return;
+    room.speakNext();
   })();
+
+  wireTop(n,null);
   return n;
 }
 
