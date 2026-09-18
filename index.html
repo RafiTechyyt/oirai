@@ -1182,7 +1182,7 @@ const Net = (()=>{
   const fire = ()=>{ store.set("last",S); onChange && onChange(); };
 
   return {
-    init, available, label, code, listen, stopListen, read, write, destroy,
+    init, available, label, code, listen, stopListen, read, write,
     get kind(){ return kind; },
     push(){ write(); },
     onChange(fn){ onChange=fn; },
