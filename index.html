@@ -537,14 +537,22 @@ const Speak = (()=>{
   let voice=null, queue=[], speaking=false, enabled=true, onDone=null, tail="";
   let levelTimer=null;
 
+  function speechLang(){
+    const acc = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
+    if(acc!=="AUTO") return acc;
+    return (navigator.language && /^en[-_]?/i.test(navigator.language)) ? navigator.language : "en-US";
+  }
   function pick(){
     if(!synth) return;
     const vs = synth.getVoices(); if(!vs.length) return;
+    const acc  = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
+    const regs = acc==="AUTO" ? ["US","GB","AU","NZ","CA","IN"] : [acc.replace(/^EN-/,"")];
+    const ex   = regs.map(r=>new RegExp("en[-_]+"+r+"\\b","i"));
     const want = [
-      v=>/en-(IN|GB|US)/i.test(v.lang) && /natural|neural|google|premium|enhanced/i.test(v.name),
-      v=>/en-IN/i.test(v.lang),
-      v=>/en/i.test(v.lang) && /google|samantha|karen|daniel|aaron/i.test(v.name),
-      v=>/^en/i.test(v.lang)
+      v=>ex.some(r=>r.test(v.lang)) && /natural|neural|google|premium|enhanced|online|desktop/i.test(v.name),
+      v=>ex.some(r=>r.test(v.lang)),
+      v=>/^en[-_]/i.test(v.lang) && /google|samantha|karen|daniel|aaron|microsoft|zira|natural|neural/i.test(v.name),
+      v=>/^en[-_]/i.test(v.lang)
     ];
     for(const f of want){ const m=vs.find(f); if(m){ voice=m; return; } }
     voice = vs[0];
@@ -565,7 +573,7 @@ const Speak = (()=>{
     speaking=true; fakeLevel(true);
     const u = new SpeechSynthesisUtterance(next);
     if(voice) u.voice=voice;
-    u.lang = voice?.lang || "en-IN";
+    u.lang = voice?.lang || speechLang();
     u.rate = 1.02; u.pitch = 1.0; u.volume = 1;
     u.onend = u.onerror = ()=>{ speaking=false; drain(); };
     try{ synth.speak(u); }catch(e){ speaking=false; drain(); }
@@ -597,7 +605,7 @@ const Speak = (()=>{
       if(!speaking) drain(); else if(!queue.length){ /* will fire on end */ }
     },
     reset(){ tail=""; queue=[]; },
-    cancel(){ queue=[]; tail=""; speaking=false; onDone=null; fakeLevel(false); try{ synth&&synth.cancel(); }catch(e){} },
+    cancel(){ const cb=onDone; queue=[]; tail=""; speaking=false; onDone=null; fakeLevel(false); try{ synth&&synth.cancel(); }catch(e){} if(cb) cb(); },
     get busy(){ return speaking || queue.length>0; }
   };
 })();
@@ -648,7 +656,10 @@ const Ears = (()=>{
     onPartial=partial; onFinal=final; finalText=""; interim="";
     rec = new SR();
     rec.continuous = true; rec.interimResults = true;
-    rec.lang = navigator.language && /^en/.test(navigator.language) ? navigator.language : "en-IN";
+    const acc = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
+    rec.lang = acc==="AUTO"
+      ? (navigator.language && /^en[-_]?/i.test(navigator.language) ? navigator.language : "en-US")
+      : acc;
     rec.onresult = e=>{
       interim="";
       for(let i=e.resultIndex;i<e.results.length;i++){
@@ -768,11 +779,20 @@ const AI = {
   /* cloud proxy — streams from the Netlify function in the same SSE shape
      Groq speaks, so the parser below doubles as the server parser */
   async _server(turns,{json=false,onText=null,tier="default",provider=null}={}){
-    const res = await fetch(this.serverUrl,{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
-      body:JSON.stringify({provider:provider||this.provider, turns, json, tier})
-    });
+    const ctrl = new AbortController(), to = setTimeout(()=>ctrl.abort(),45000);
+    let res;
+    try{
+      res = await fetch(this.serverUrl,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
+        body:JSON.stringify({provider:provider||this.provider, turns, json, tier}),
+        signal:ctrl.signal
+      });
+    }catch(e){
+      clearTimeout(to);
+      throw {code:e.name==="AbortError"?"timed_out":"network", message:"Proxy timed out — try again"};
+    }
+    clearTimeout(to);
     if(!res.ok){
       let detail=""; try{ detail=(await res.json())?.error||`HTTP ${res.status}`; }catch(e){ detail=`HTTP ${res.status}`; }
       throw {code:"upstream_error",message:`Proxy ${res.status} — ${detail}`};
@@ -1374,7 +1394,7 @@ function VoiceRoom(n, cfg){
   const mainBtn=$("#mainBtn",n), kbd=$("#kbd",n), vol=$("#volBtn",n);
   const comp=$("#composer",n), ta=$("#say",n), send=$("#send",n), hint=$("#hint",n);
   let typing = !Ears.supported();
-  let busy=false;
+  let busy=false, barging=false, flow=0;
 
   const alive = ()=>TOKEN===my;
   function setState(txt,live){ if(!alive())return; vstate.textContent=txt; vstate.classList.toggle("live",!!live); }
@@ -1394,19 +1414,19 @@ function VoiceRoom(n, cfg){
   function submitText(){ const v=ta.value.trim(); if(!v||busy) return; ta.value=""; fit(); commit(v); }
 
   mainBtn.onclick=()=>{
-    if(busy && Speak.busy){ Speak.cancel(); startListening(); return; }   // barge in
     if(Ears.listening){ Ears.stop(true); return; }
+    if(Speak.busy){ Speak.cancel(); barging=true; startListening(); return; }   // barge in
     startListening();
   };
 
   function startListening(){
-    if(!alive()||busy) return;
-    ucap.textContent=""; setState("listening",true);
+    if(!alive()||Ears.listening||document.hidden) return;
+    ucap.textContent=""; ucap.style.opacity=1; setState("listening",true);
     mainBtn.dataset.live="1"; mainBtn.innerHTML=ICON.wave;
     const ok = Ears.start({
       partial:t=>{ if(alive()) ucap.textContent=t; },
       final:t=>{ if(alive()) commit(t); },
-      pauseMs:2300
+      pauseMs:2200
     });
     if(!ok){ typing=true; applyMode(); }
   }
@@ -1416,27 +1436,36 @@ function VoiceRoom(n, cfg){
   }
 
   async function commit(text){
-    if(!alive()||busy) return;
-    Ears.stop(false); ucap.textContent="";
+    if(!alive()) return;
+    Ears.stop(false); barging=false;
     cfg.onUser(text);
     await speakNext();
   }
 
+  function fadeUcap(){
+    if(!ucap.textContent.trim()) return;
+    ucap.style.opacity=0.5;
+    setTimeout(()=>{ if(!alive()) return; ucap.textContent=""; ucap.style.opacity=1; }, 460);
+  }
+
   async function speakNext(){
     if(!alive()) return;
-    busy=true; mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.stop;
+    const my = ++flow; busy=true; barging=false;
+    mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.stop;
     setState("thinking",false); cap.textContent=""; Sky.setLevel(.12);
     Speak.reset();
     let full="", started=false;
+    const stream = ({text})=>{
+      if(!alive()||my!==flow||barging) return;
+      if(!started){ started=true; setState("speaking",true); fadeUcap(); }
+      cap.textContent = text.replace("<ENOUGH>","").trim();
+      Speak.feed(text.replace("<ENOUGH>",""));
+    };
     try{
-      full = await cfg.next(({text})=>{
-        if(!alive()) return;
-        if(!started){ started=true; setState("speaking",true); }
-        cap.textContent = text.replace("<ENOUGH>","").trim();
-        Speak.feed(text.replace("<ENOUGH>",""));
-      });
+      full = await cfg.next(stream);
     }catch(e){
       if(!cfg.fallback) throw e;
+      if(!alive()||my!==flow) return;
       full = cfg.fallback();
       cap.textContent = full.replace("<ENOUGH>","");
       const h=$("#hint",n);
@@ -1444,8 +1473,9 @@ function VoiceRoom(n, cfg){
         esc(AI.lastError?.message || AI.lastError?.code || "the live mediator didn't answer")
       }. Tap the gear to fix it.</span>`;
     }
-    if(!alive()) return;
+    if(!alive()||my!==flow) return;
     const clean = String(full).replace("<ENOUGH>","").trim();
+    fadeUcap();
     cap.textContent = clean;
     const finished = cfg.onAI(clean, /<ENOUGH>/.test(full));
     await new Promise(res=>{
@@ -1455,6 +1485,7 @@ function VoiceRoom(n, cfg){
       else setTimeout(done, Math.min(clean.length*95, 32000));   // safety net
     });
     if(!alive()) return;
+    if(my!==flow){ busy=false; Sky.setLevel(0); idle(); return; }   // a barge-in took over
     busy=false; Sky.setLevel(0);
     if(finished){ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; cfg.onFinish(); return; }
     idle();
@@ -2181,6 +2212,17 @@ function openSettings(){
         <option value="gemini">Google Gemini</option>
       </select>
       <p class="tiny" id="provTip"></p></div>
+    <div class="field"><span>Listening &amp; voice accent</span>
+      <select class="input" id="accIn">
+        <option value="auto">Auto (follow this browser)</option>
+        <option value="en-US">English — US</option>
+        <option value="en-GB">English — UK</option>
+        <option value="en-AU">English — Australia</option>
+        <option value="en-NZ">English — New Zealand</option>
+        <option value="en-CA">English — Canada</option>
+        <option value="en-IN">English — India</option>
+      </select>
+      <p class="tiny">Used to recognise your voice and to pick the mediator's voice. Choose the accent closest to yours for the best results.</p></div>
     <div class="field"><span>API key</span>
       <input class="input" id="keyIn" type="password" placeholder="Paste the provider's API key here">
       <p class="tiny">Stored in this browser only. Each provider keeps its own key.</p></div>
@@ -2197,6 +2239,8 @@ function openSettings(){
   sheet.classList.add("on");
   const close=()=>sheet.classList.remove("on");
   const provSel=$("#provIn",body), keyIn=$("#keyIn",body), keyTip=$("#provTip",body);
+  const accIn=$("#accIn",body);
+  accIn.value=store.get("accent","auto")||"auto";
   const proxyIn=$("#proxyIn",body);
   proxyIn.value = AI.proxyBase && !AI.proxyBase.startsWith("/") ? AI.proxyBase : "";
   const keys={groq:AI.keys.groq, openai:AI.keys.openai, gemini:AI.keys.gemini};
@@ -2227,6 +2271,7 @@ function openSettings(){
     keys.gemini?store.set("key_gemini",keys.gemini):store.del("key_gemini");
     store.del("key");
     pr?store.set("proxy",pr):store.del("proxy");
+    store.set("accent", accIn.value.trim()||"auto");
     f?store.set("fb",f):store.del("fb");
     try{ location.reload(); }catch(e){ close(); render(); }
   };
