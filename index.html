@@ -680,38 +680,48 @@ const Ears = (()=>{
 /* ---------------------------------------------------------------
    5. THE AI
    claude — live inside a published Claude artifact
+   groq   — OpenAI-compatible endpoint, blazing fast, works on any host
+   openai — GPT-6 Astra, OpenAI's flagship reasoning model
    gemini — your own key, for a public deployment
    local  — silent last resort so a demo never dies on stage
+   The current provider is chosen in Settings; each provider keeps its
+   own key, and if one fails the others are tried in turn.
    --------------------------------------------------------------- */
 const AI = {
-  mode:"local", sample:null, key:null, degraded:false,
+  mode:"local", sample:null, provider:"groq", degraded:false,
+  keys:{groq:"", openai:"", gemini:""},
 
   async init(){
-    this.key = store.get("key", null);
+    this.provider = store.get("provider", "groq");
+    this.keys.groq   = store.get("key_groq",   "");
+    this.keys.openai = store.get("key_openai", "");
+    this.keys.gemini = store.get("key_gemini", store.get("key", null)); // migrate the old single key slot
     if(window.claude && typeof window.claude.use==="function"){
       try{
         const s = await Promise.race([window.claude.use("sample"), wait(4500).then(()=>null)]);
         if(s){ this.sample=s; this.mode="claude"; return this.mode; }
       }catch(e){}
     }
-    if(this.key){ this.mode="gemini"; return this.mode; }
-    this.mode="local"; return this.mode;
+    this.mode = this.keys[this.provider] ? this.provider : "local";
+    return this.mode;
   },
-  live(){ return this.mode==="claude" || !!this.key; },
-  label(){ return this.mode==="claude" ? "Connected" : this.mode==="gemini" ? "Connected · Gemini" : "No connection"; },
+  live(){ return this.mode==="claude" || !!this.keys[this.provider]; },
+  label(){ return this.mode==="claude" ? "Connected"
+    : this.mode==="local" ? "No connection"
+    : `Connected · ${this.mode==="groq" ? "Groq" : this.mode==="openai" ? "GPT-6 Astra" : "Gemini"}`; },
 
-  /* public entry: tries the current backend, then falls back across backends
-     instead of silently dropping to the scripted mediator */
+  /* public entry: tries the selected provider first, then falls across any
+     other configured provider instead of silently dropping to the script */
   async chat(turns, opts={}){
     const order = [];
     if(this.mode==="claude") order.push("claude");
-    if(this.key) order.push("gemini");
-    if(this.mode==="gemini" && !order.includes("gemini")) order.push("gemini");
-    if(!order.length) throw {code:"no_backend", message:"No mediator configured. Add a Gemini key in settings."};
+    if(this.keys[this.provider]) order.push(this.provider);
+    ["groq","gemini","openai"].forEach(p=>{ if(p!==this.provider && this.keys[p]) order.push(p); });
+    if(!order.length) throw {code:"no_backend", message:"No mediator configured. Add an API key in settings."};
     let last=null;
     for(const m of order){
       try{
-        const prev=this.mode; this.mode=m;
+        this.mode=m;
         const out = await this._chat(turns,opts);
         this.lastError=null; this.degraded=false;
         return out;
@@ -731,19 +741,149 @@ const AI = {
       if(signal) o.signal=signal;
       return json ? await this.sample.json(turns,o) : (await this.sample(turns,o)).text;
     }
+    if(this.mode==="groq") return await this._groq(turns,json,onText,tier);
+    if(this.mode==="openai") return await this._openai(turns,json,onText,tier);
     if(this.mode==="gemini") return await this._gemini(turns,json,onText,tier);
     throw {code:"offline"};
   },
 
+  /* ------------------------------------------------------------------
+     GROQ — OpenAI-compatible chat completions over SSE streaming
+     ------------------------------------------------------------------ */
+  async _groq(turns,json,onText,tier){
+    const model = tier==="complex" ? "openai/gpt-oss-120b" : "openai/gpt-oss-20b";
+    const body = {
+      model,
+      messages: turns.map(t=>({role:t.role==="assistant"?"assistant":"user", content:t.content})),
+      temperature:.75, max_tokens:3000, stream:true
+    };
+    if(json) body.response_format={type:"json_object"};
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+this.keys.groq},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok){
+      let detail=""; try{ detail=(await res.json())?.error?.message||`HTTP ${res.status}`; }catch(e){ detail=`HTTP ${res.status}`; }
+      throw {code:"upstream_error",message:`Groq ${res.status} — ${detail}`};
+    }
+    if(!res.body) return await this._groqPlain(turns,json,onText,model);
+    const reader=res.body.getReader(), dec=new TextDecoder();
+    let text="", buf="";
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split("\n"); buf=lines.pop();
+      for(const ln of lines){
+        const line=ln.trim();
+        if(!line.startsWith("data:")) continue;
+        const data=line.slice(5).trim();
+        if(data==="[DONE]") continue;
+        try{
+          const j=JSON.parse(data);
+          const d=(j.choices?.[0]?.delta?.content)||"";
+          if(d){ text+=d; onText && onText({text, delta:d}); }
+        }catch(e){}
+      }
+    }
+    if(!text.trim()) return await this._groqPlain(turns,json,onText,model);
+    if(json){ const m=text.match(/\{[\s\S]*\}/); if(!m) throw {code:"invalid_json",message:"Groq returned no JSON"}; return JSON.parse(m[0]); }
+    return text;
+  },
+
+  /* some networks and proxies break SSE — plain POST is the safety net */
+  async _groqPlain(turns,json,onText,model){
+    const body={model,messages:turns.map(t=>({role:t.role==="assistant"?"assistant":"user",content:t.content})),
+                temperature:.75,max_tokens:3000};
+    if(json) body.response_format={type:"json_object"};
+    const r=await fetch("https://api.groq.com/openai/v1/chat/completions",
+      {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+this.keys.groq},body:JSON.stringify(body)});
+    if(!r.ok){ let d=""; try{ d=(await r.json())?.error?.message||`HTTP ${r.status}`; }catch(e){ d=`HTTP ${r.status}`; }
+      throw {code:"upstream_error",message:`Groq ${r.status} — ${d}`}; }
+    const j=await r.json();
+    const text=(j.choices?.[0]?.message?.content)||"";
+    if(!text.trim()) throw {code:"empty_completion",message:"Groq returned nothing (check the key's API access)"};
+    onText && onText({text,delta:text});
+    if(json){ const m=text.match(/\{[\s\S]*\}/); return JSON.parse(m?m[0]:text); }
+    return text;
+  },
+
+  /* ------------------------------------------------------------------
+     OPENAI — GPT-6 Astra via Chat Completions, SSE streaming
+     Astra is a reasoning model: no temperature/top_p, use reasoning_effort
+     and max_completion_tokens instead.
+     ------------------------------------------------------------------ */
+  async _openai(turns,json,onText,tier){
+    const model = "gpt-6-astra";
+    const effort = tier==="complex" ? "high" : tier==="quick" ? "low" : "medium";
+    const body = {
+      model,
+      messages: turns.map(t=>({role:t.role==="assistant"?"assistant":"user", content:t.content})),
+      reasoning_effort:effort,
+      max_completion_tokens: tier==="quick" ? 1024 : 8000,
+      stream:true
+    };
+    if(json) body.response_format={type:"json_object"};
+    const res = await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+this.keys.openai},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok){
+      let detail=""; try{ detail=(await res.json())?.error?.message||`HTTP ${res.status}`; }catch(e){ detail=`HTTP ${res.status}`; }
+      throw {code:"upstream_error",message:`OpenAI ${res.status} — ${detail}`};
+    }
+    if(!res.body) return await this._openaiPlain(turns,json,onText,model);
+    const reader=res.body.getReader(), dec=new TextDecoder();
+    let text="", buf="";
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split("\n"); buf=lines.pop();
+      for(const ln of lines){
+        const line=ln.trim();
+        if(!line.startsWith("data:")) continue;
+        const data=line.slice(5).trim();
+        if(data==="[DONE]") continue;
+        try{
+          const j=JSON.parse(data);
+          const d=(j.choices?.[0]?.delta?.content)||"";
+          if(d){ text+=d; onText && onText({text, delta:d}); }
+        }catch(e){}
+      }
+    }
+    if(!text.trim()) return await this._openaiPlain(turns,json,onText,model);
+    if(json){ const m=text.match(/\{[\s\S]*\}/); if(!m) throw {code:"invalid_json",message:"GPT-6 Astra returned no JSON"}; return JSON.parse(m[0]); }
+    return text;
+  },
+
+  /* some networks and proxies break SSE — plain POST is the safety net */
+  async _openaiPlain(turns,json,onText,model){
+    const body={model,messages:turns.map(t=>({role:t.role==="assistant"?"assistant":"user",content:t.content})),
+                reasoning_effort:"medium",max_completion_tokens:4000};
+    if(json) body.response_format={type:"json_object"};
+    const r=await fetch("https://api.openai.com/v1/chat/completions",
+      {method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+this.keys.openai},body:JSON.stringify(body)});
+    if(!r.ok){ let d=""; try{ d=(await r.json())?.error?.message||`HTTP ${r.status}`; }catch(e){ d=`HTTP ${r.status}`; }
+      throw {code:"upstream_error",message:`OpenAI ${r.status} — ${d}`}; }
+    const j=await r.json();
+    const text=(j.choices?.[0]?.message?.content)||"";
+    if(!text.trim()) throw {code:"empty_completion",message:"OpenAI returned nothing (check the key's API access)"};
+    onText && onText({text,delta:text});
+    if(json){ const m=text.match(/\{[\s\S]*\}/); return JSON.parse(m?m[0]:text); }
+    return text;
+  },
+
+  /* ------------------------------------------------------------------
+     GEMINI — Google Generative Language, SSE streaming
+     ------------------------------------------------------------------ */
   async _gemini(turns,json,onText,tier){
-    // Google-maintained rolling aliases — auto-swap to the current model, never go stale
-    const model = tier==="complex" ? "gemini-pro-latest" : "gemini-flash-latest";
     const body = {
       contents: turns.map(t=>({role:t.role==="assistant"?"model":"user", parts:[{text:t.content}]})),
       generationConfig:{ temperature:.75, maxOutputTokens:3000 }
     };
     if(json) body.generationConfig.responseMimeType="application/json";
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=`+encodeURIComponent(this.key),
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=`+encodeURIComponent(this.keys.gemini),
       {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!res.ok){
       let detail=""; try{ detail=(await res.json())?.error?.message||""; }catch(e){}
@@ -775,7 +915,7 @@ const AI = {
     const body={contents:turns.map(t=>({role:t.role==="assistant"?"model":"user",parts:[{text:t.content}]})),
                 generationConfig:{temperature:.75,maxOutputTokens:3000}};
     if(json) body.generationConfig.responseMimeType="application/json";
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=`+encodeURIComponent(this.key),
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=`+encodeURIComponent(this.keys.gemini),
       {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok){ let d=""; try{ d=(await r.json())?.error?.message||""; }catch(e){}
       throw {code:"upstream_error",message:`Gemini ${r.status}${d?" — "+d:""}`}; }
@@ -1976,9 +2116,16 @@ function openSettings(){
   body.innerHTML=`<div class="grip"></div><div class="stack lg">
     <div><h3 class="h3">Settings</h3>
       <p class="lede" style="margin-top:7px">Mediator: <b>${esc(AI.label())}</b> · Sync: <b>${esc(Net.label())}</b></p></div>
-    <div class="field"><span>Google Gemini API key</span>
-      <input class="input" id="keyIn" type="password" placeholder="For a public deployment" value="${esc(AI.key||"")}">
-      <p class="tiny">Stored in this browser only. Needed when the app is hosted outside Claude.</p></div>
+    <div class="field"><span>AI provider</span>
+      <select class="input" id="provIn">
+        <option value="groq">Groq</option>
+        <option value="openai">OpenAI · GPT-6 Astra</option>
+        <option value="gemini">Google Gemini</option>
+      </select>
+      <p class="tiny" id="provTip"></p></div>
+    <div class="field"><span>API key</span>
+      <input class="input" id="keyIn" type="password" placeholder="Paste the provider's API key here">
+      <p class="tiny">Stored in this browser only. Each provider keeps its own key.</p></div>
     <div class="field"><span>Firebase Realtime Database URL</span>
       <input class="input" id="fbIn" placeholder="https://your-project-default-rtdb.firebaseio.com" value="${esc(store.get("fb","")||"")}">
       <p class="tiny">Turns on two-device rooms when hosted. Set the database rules to public read/write for the demo.</p></div>
@@ -1991,28 +2138,50 @@ function openSettings(){
     <button class="linkish" id="close" style="text-align:center">Close</button></div>`;
   sheet.classList.add("on");
   const close=()=>sheet.classList.remove("on");
+  const provSel=$("#provIn",body), keyIn=$("#keyIn",body), keyTip=$("#provTip",body);
+  const keys={groq:AI.keys.groq, openai:AI.keys.openai, gemini:AI.keys.gemini};
+  const provTips={
+    groq:"Groq is the fastest — paste your key above.",
+    openai:"GPT-6 Astra, OpenAI's flagship model — paste your key above.",
+    gemini:"Gemini needs the Generative Language API enabled on its Google project."
+  };
+  provSel.value=AI.provider;
+  provSel.dataset.prev=AI.provider;
+  keyIn.value=keys[provSel.value]||"";
+  keyTip.textContent=provTips[provSel.value];
+  provSel.onchange=()=>{
+    keys[provSel.dataset.prev]=keyIn.value.trim();
+    keyIn.value=keys[provSel.value]||"";
+    provSel.dataset.prev=provSel.value;
+    keyTip.textContent=provTips[provSel.value];
+  };
   $("#close",body).onclick=close;
   sheet.onclick=e=>{ if(e.target===sheet) close(); };
   $("#saveCfg",body).onclick=()=>{
-    const k=$("#keyIn",body).value.trim(), f=$("#fbIn",body).value.trim().replace(/\/+$/,"");
-    k?store.set("key",k):store.del("key");
+    const p=provSel.value, k=keyIn.value.trim(), f=$("#fbIn",body).value.trim().replace(/\/+$/,"");
+    keys[p]=k;
+    store.set("provider",p);
+    keys.groq?store.set("key_groq",keys.groq):store.del("key_groq");
+    keys.openai?store.set("key_openai",keys.openai):store.del("key_openai");
+    keys.gemini?store.set("key_gemini",keys.gemini):store.del("key_gemini");
+    store.del("key");
     f?store.set("fb",f):store.del("fb");
-    AI.key=k||null;
     try{ location.reload(); }catch(e){ close(); render(); }
   };
   $("#testBtn",body).onclick=async()=>{
     const out=$("#testOut",body), btn=$("#testBtn",body);
     out.hidden=false; out.className="notice"; out.textContent="Calling the mediator…";
     btn.disabled=true;
-    const k=$("#keyIn",body).value.trim();
-    if(k && k!==AI.key){ AI.key=k; store.set("key",k); }
+    const p=provSel.value, k=keyIn.value.trim();
+    if(k && k!==AI.keys[p]){ AI.keys[p]=k; store.set("key_"+p,k); }
+    AI.provider=p; store.set("provider",p);
     await AI.init();
     const r=await AI.test();
     btn.disabled=false;
     out.className = "notice"+(r.ok?"":" warn");
     out.innerHTML = r.ok
       ? `<b style="color:var(--bloom)">Live.</b> ${esc(r.backend)} answered in ${r.ms}ms — "${esc(r.detail)}". Real replies from here on.`
-      : `<b style="color:var(--ember)">Not connected.</b> ${esc(r.backend)} said: ${esc(r.detail)}<br><br>Most common causes: the Generative Language API isn't enabled on that Google project, the key has an HTTP-referrer restriction that blocks this site, or the key was pasted with a stray space.`;
+      : `<b style="color:var(--ember)">Not connected.</b> ${esc(r.backend)} said: ${esc(r.detail)}<br><br>Most common causes: the API key isn't enabled on that provider's project, the key has an HTTP-referrer restriction that blocks this site, or the key was pasted with a stray space.`;
   };
   const ins=$("#install",body); if(ins) ins.onclick=()=>{ close(); deferredInstall.prompt(); deferredInstall=null; };
   $("#wipe",body).onclick=()=>{ close(); reset(); };
