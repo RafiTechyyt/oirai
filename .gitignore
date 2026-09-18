@@ -1,0 +1,11 @@
+# secrets — never commit these
+.env
+*.env
+.env.*
+!.env.example
+
+# os / editor noise
+node_modules/
+.DS_Store
+npm-debug.log*
+Thumbs.db
