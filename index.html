@@ -858,7 +858,7 @@ const AI = {
     throw last;
   },
 
-  async _chat(turns, {via="direct", json=false,onText=null,tier="default",signal=null,provider=null}={}){
+  async _chat(turns, {via="direct", json=false,onText=null,tier="default",signal=null,provider=null,url=null}={}){
     if(this.mode==="claude"){
       const o={cache:false, modelTier:tier};
       if(onText) o.onText=onText;
