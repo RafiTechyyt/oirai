@@ -449,7 +449,7 @@ const S = {
   signed:{a:false,b:false},
   voice:true
 };
-const MAXQ = 6, MAXROUNDS = 3;
+const MAXQ = 4, MAXROUNDS = 3;
 const RELATIONS = ["Partners","Friends","Parent & child","Siblings","Housemates","Teammates","Something else"];
 
 const store = {
@@ -1272,15 +1272,16 @@ ${VOICE_STYLE}
 How you behave:
 - One question per message. Never two, never a list.
 - Under 45 words. Warm, plain, unhurried.
-- Reflect back one specific thing they just said, in a few words, before you ask the next thing.
+- Let their answers steer you: each question must begin from one specific thing they just said — a phrase, an image, a moment of theirs. Never ask a question that could be asked of anyone with any argument.
+- Never repeat a question and never reuse a question's shape. If the story is already clear, dig once only where it is still unfinished, then let it go.
+- Keep the whole interview to 2 or 3 questions. As soon as you can represent ${me} fairly — often by question two — stop and close.
 - Never judge, never take a side, never say who is right, no advice yet.
-- Work roughly through: what happened, how it felt, what they think ${other} intended, what they wanted and didn't get, what would count as okay again.
 - If an answer is vague, ask about the one concrete moment instead.
-- If they vent or swear, take it without flinching and ask the next question.
-- Speech-to-text will garble some words. Never comment on typos or odd wording; infer what they meant.
-- Never ask the same question twice or reuse a question's shape; every question must grow out of what they just said.
+- If they vent or swear, take it without flinching and move on.
+- Speech-to-text garbles words. Never comment on typos or odd wording; infer their meaning.
+- Reply in the language they are speaking to you. Malayalam stays Malayalam, Hindi stays Hindi, English stays English.
 
-When you can represent ${me} fairly — sometimes as early as question two — say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Never pass question ${MAXQ}.
+When you can represent ${me} fairly, say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Never pass question ${MAXQ}.
 
 Start now: one sentence that makes ${me} feel safe, then your first question.`;
 }
@@ -1294,6 +1295,17 @@ Reply with the summary only.`;
 
 const sideText = side => S[side].turns.map(t=>(t.role==="user"?S[side].name:"Listener")+": "+t.content).join("\n");
 const doubtText = side => (S.cross?.[side]||[]).map((q,i)=>`Q: ${q}\nA: ${S[side].answers?.[i]||"(not answered)"}`).join("\n");
+
+/* the shared/summary flows skip respondTurns' per-message language injection,
+   so each prompt carries its own lock that keeps the whole conclusion in the
+   language these two actually spoke — no mid-book language switch. */
+const spokenLang = ()=>{
+  const txt = sideText("a")+" "+sideText("b");
+  if(/[\u0D00-\u0D7F]/.test(txt)) return "Malayalam";
+  if(/[\u0900-\u097F]/.test(txt)) return "Hindi";
+  return "English";
+};
+const LANG_LOCK = ()=>`\n\nLANGUAGE: The two people did their talking in ${spokenLang()}. Write this ENTIRE message in ${spokenLang()} — every sentence, question and list item. Never switch language midway and never fall back to English.`;
 
 function doubtsPrompt(){
   return `You are the mediator in "Obviously, I'm Right". You have now heard both people privately, separately.
@@ -1313,6 +1325,7 @@ Rules:
 - Each question under 28 words, spoken plainly out loud.
 - NEVER reveal what the other person said. Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
 - Ask about facts, sequence and intent, not about feelings you already have.
+${LANG_LOCK()}
 
 Reply with ONLY this JSON, no fence:
 {"a":["question one for ${S.a.name}","question two"],"b":["question one for ${S.b.name}","question two"]}`;
@@ -1351,6 +1364,9 @@ Obligations:
 - Where the accounts truly conflict on a fact, mark it disputed, give both versions, decide nothing.
 - Write so BOTH could read it aloud without feeling ambushed.
 - Shape every chapter to THIS conflict and these two people; never reuse generic phrasings.
+- No stock phrases anywhere: no "at the end of the day", no "it's not about blame", no sentence that could appear in any other mediation. Every line must cite something only these two people actually said or did.
+
+${LANG_LOCK()}
 
 Reply with ONLY this JSON, no fence:
 {
@@ -1379,7 +1395,7 @@ ${VOICE_STYLE}
 
 What ${who} objected to: "${S[who===S.a.name?"a":"b"].rebuttal||"no reason given"}"
 
-Say something to ${who} directly, out loud, in under 70 words. Take the objection seriously. Do not defend the summary out of pride and do not cave just to end the argument. Name the thing ${who} is protecting, say plainly what it would cost them to stay here, and give them one specific next step. Warm, not soft. No lists.`;
+Say something to ${who} directly, out loud, in under 70 words. Take the objection seriously. Do not defend the summary out of pride and do not cave just to end the argument. Name the thing ${who} is protecting, say plainly what it would cost them to stay here, and give them one specific next step. Warm, not soft. No lists.${LANG_LOCK()}`;
 }
 
 /* ---------------------------------------------------------------
@@ -2188,11 +2204,16 @@ function Synth(){
   adv(); const tick=setInterval(adv,1500);
 
   (async()=>{
-    let rep;
-    try{
+    const attempt = async ()=>{
       if(!AI.live()) throw {code:"offline"};
-      rep = await AI.chat([{role:"user",content:synthesisPrompt()}],{json:true,tier:"complex"});
-    }catch(e){ await wait(500); rep = Local.report(); }
+      return await AI.chat([{role:"user",content:synthesisPrompt()}],{json:true,tier:"complex"});
+    };
+    let rep;
+    try{ rep = await attempt(); }
+    catch(e){
+      try{ await wait(1200); rep = await attempt(); }            // one honest retry
+      catch(e2){ await wait(500); rep = Local.report(); }        // only true last resort
+    }
     if(TOKEN!==my) return;
     clearInterval(tick);
     all.forEach(s=>{ s.classList.remove("on"); s.classList.add("done"); });
@@ -2441,7 +2462,7 @@ function Persuade(){
     try{
       if(!AI.live()) throw {code:"offline"};
       text = await AI.chat([{role:"user",content: both
-        ? `You are the mediator in "Obviously, I'm Right". BOTH ${S.a.name} and ${S.b.name} say the summary doesn't land.\n\n${VOICE_STYLE}\n\n${S.a.name} objected: "${S.a.rebuttal}"\n${S.b.name} objected: "${S.b.rebuttal}"\n\nSay something to the two of them together, out loud, under 70 words. Notice what their two objections have in common — that is usually the real conflict. Be warm and direct. No lists.`
+        ? `You are the mediator in "Obviously, I'm Right". BOTH ${S.a.name} and ${S.b.name} say the summary doesn't land.\n\n${VOICE_STYLE}\n\n${LANG_LOCK()}\n\n${S.a.name} objected: "${S.a.rebuttal}"\n${S.b.name} objected: "${S.b.rebuttal}"\n\nSay something to the two of them together, out loud, under 70 words. Notice what their two objections have in common — that is usually the real conflict. Be warm and direct. No lists.`
         : persuadePrompt(S[holdout].name, S[other].name)}],
         {tier:"default", onText:({text:t})=>{ if(TOKEN===my){ cap.textContent=t; Speak.feed(t); } }});
     }catch(e){
