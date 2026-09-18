@@ -2069,7 +2069,9 @@ function Chamber(side){
       const antiRepeat = told.length
         ? `\n\nQUESTIONS YOU ALREADY ASKED ${st.name} — NEVER ask these again, never rephrase them, never reuse their shape:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nAsk about NEW ground only: dig into one phrase from their last answer that you have not explored yet. If nothing new is worth digging into, close with <ENOUGH> now.`
         : "";
-      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat}, ...st.turns];
+      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat+(st.closing
+        ? `\n\n${st.name} just answered the final question. Do NOT ask anything new at all — say one short warm closing line and end with the exact token <ENOUGH>.`
+        : (st.qCount+1>=MAXQ ? `\n\nThis is your last question — after ${st.name} answers it, close warmly with <ENOUGH> and ask nothing more.` : ""))}, ...st.turns];
       const full = await streamAI(turns,onText,"default");
       const clean = String(full).replace(/<ENOUGH>/g,"").trim();
       if(!/<ENOUGH>/.test(full) && clean.length>10 && told.some(q=>zzSim(q,clean)>0.6)){
@@ -2103,7 +2105,14 @@ function Chamber(side){
       const asked=askedSoFar(side);
       const last=asked[asked.length-1];
       const repeated = !!(last && last.length>10 && asked.slice(0,-1).some(q=>zzSim(q,last)>0.6));
-      return enough || st.qCount>=MAXQ || repeated;
+      const asking = /\?/.test(String(text));
+      if(enough || repeated){ st.closing=false; return true; }
+      if(st.qCount>=MAXQ){
+        if(st.closing || !asking){ st.closing=false; return true; }
+        st.closing=true;                     // allow the answer to the capped question
+        return false;                        // then close after it
+      }
+      return false;
     },
     onFinish: ()=>{
       st.done=true; save();
