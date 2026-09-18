@@ -1614,7 +1614,7 @@ function render(){
     open:Open, setup:Setup, pair:Pair, hold:Hold,
     chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
     doubting:Doubting, doubtsA:()=>Doubts("a"), doubtsB:()=>Doubts("b"), sealD:SealD, hold2:Hold2,
-    synth:Synth, findings:Findings, flip:Flip, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
+    synth:Synth, convince:Convince, flip:Flip, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
     admin:Admin
   };
   app.innerHTML="";
@@ -2480,7 +2480,7 @@ function Synth(){
     S.a.rebuttal=""; S.b.rebuttal=""; save();
     Sky.setMerge(1);
     await wait(800);
-    if(TOKEN===my) go("findings");
+    if(TOKEN===my) go("convince");
   })();
   return n;
 }
@@ -2526,95 +2526,59 @@ async function finaliseReport(rep){
 }
 
 /* ---------------------------------------------------------------
-   19. FINDINGS
+   19. CONVINCE — the mediator's word, then the shoes-walking
+   No report card. The mediator reads aloud the one thing at the
+   heart of it, privately speaks (out loud) to the one carrying
+   more of the misunderstanding — never calling anyone wrong — and
+   sends both into the perspective flip, that person first.
    --------------------------------------------------------------- */
-function Findings(){
+function convincePrompt(who){
+  const o=who==="a"?"b":"a", A=S.a.name, B=S.b.name;
+  const me=who==="a"?A:B, them=o==="a"?A:B;
+  const r=S.report||{};
+  const split=(r.truthMap||[]).filter(x=>x.kind!=="agreed").slice(0,2)
+    .map(x=>`- ${x.what}: you told it as "${who==="a"?x.a:x.b}", ${them} told it as "${who==="a"?x.b:x.a}"`).join("\n");
+  return `You are the mediator in "Obviously, I'm Right". You have heard both sides and their clarifications, and you will NEVER tell anyone they are wrong. Right now you are speaking to ${me} alone, out loud, before both people walk in each other's shoes.
+
+${VOICE_STYLE}
+
+First, name back to ${me} what they have been feeling and holding, straight from their own words — plainly, with warmth, no flattery and no judgement.
+Then show them the one moment where the two accounts truly split:
+${split||`- the silence itself: nothing about that moment ever got said out loud`}
+Ask ${me}, with real feeling, to sit inside that moment from ${them}'s side: what it must have felt like over there, and which part ${me} cannot see from here. Hold no verdict, no defence of ${them}, no accusation of ${me}.
+End by telling ${me} you are about to walk them through ${them}'s eyes, and that nothing in that walk will be used to say they were wrong.
+
+Under 90 words. No question marks. No list beyond the split moment.${LANG_LOCK()}`;
+}
+
+function Convince(){
   Sky.setMerge(1); Sky.setEnergy(.5); Sky.setFocus(0);
   const r=S.report, A=S.a.name, B=S.b.name;
-  const tags=(x,c)=>x.map(v=>`<span class="tag ${c}">${esc(v)}</span>`).join("");
-  const mySeat = S.seat;
+  const pa=Number(r.contribution&&r.contribution.a&&r.contribution.a.pct);
+  const hold = (isFinite(pa)?pa:50) >= 50 ? "a" : "b";
+  const wrong = hold==="a"?A:B, right = hold==="a"?B:A;
 
   const n=stage(`
-    ${topbar("Both sides",false)}
+    ${topbar("The mediator's word",false)}
     <div class="findings">
       <div class="stack" style="padding-top:2px">
-        <p class="tiny">Round ${S.round} · the mediator's read of both your stories</p>
+        <p class="tiny">Round ${S.round} · nobody here is being called right or wrong</p>
         <h1 class="headline">${esc(r.headline)}</h1>
         <button class="btn ghost sm" id="playAll" style="width:auto;justify-self:start">${ICON.vol} Hear it from the mediator</button>
         <p class="lede" id="spokenTxt" hidden style="font-size:15.5px">${esc(r.spoken)}</p>
       </div>
 
-      <div class="sect"><h3 class="h3">What you already agree on</h3>
-        <div class="card bloom"><div class="stack sm">
-          ${r.commonGround.map(x=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start">
-            <span class="dot bloom" style="margin-top:8px"></span><span style="font-size:14.5px;line-height:1.5">${esc(x)}</span></div>`).join("")}
-        </div></div></div>
-
-      <div class="sect"><h3 class="h3">Where your stories meet, and where they split</h3>
-        <p class="lede">Disputed doesn't mean someone is lying. Two people can remember the same minute differently.</p>
-        <div class="legend"><span><i style="background:var(--bloom)"></i>You agree</span>
-          <span><i style="background:var(--ember)"></i>Remembered differently</span>
-          <span><i style="background:var(--mist-dim)"></i>Only one of you saw it</span></div>
-        <div class="tm">${r.truthMap.map(x=>`<div class="tmrow" data-k="${x.kind}"><span class="tmpin"></span><div>
-          <div class="what">${esc(x.what)}</div><div class="vs">
-          <div class="a"><b style="color:var(--ember)">${esc(A)}</b> · ${esc(x.a)}</div>
-          <div class="b"><b style="color:var(--iris)">${esc(B)}</b> · ${esc(x.b)}</div></div></div></div>`).join("")}</div></div>
-
-      <div class="sect"><h3 class="h3">Fact, feeling, assumption</h3>
-        <p class="lede">Almost every long argument is built on the third one. Read your own column first.</p>
-        <div class="split">
-          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)}</div><div class="stack sm">
-            <div class="chips">${tags(r.lenses.a.facts,"fact")}</div><div class="chips">${tags(r.lenses.a.feelings,"feel")}</div>
-            <div class="chips">${tags(r.lenses.a.assumptions,"assume")}</div></div></div>
-          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)}</div><div class="stack sm">
-            <div class="chips">${tags(r.lenses.b.facts,"fact")}</div><div class="chips">${tags(r.lenses.b.feelings,"feel")}</div>
-            <div class="chips">${tags(r.lenses.b.assumptions,"assume")}</div></div></div></div>
-        <p class="tiny" style="margin-top:10px">Pink is what happened. Amber is how it felt. Violet is what you filled in yourself.</p></div>
-
-      <div class="sect"><h3 class="h3">What you actually meant</h3>
-        <div class="stack">
-          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)} said</div>
-            <p style="font-size:14.5px;color:var(--mist);line-height:1.5">${esc(r.bridge.a.said)}</p>
-            <p style="font-size:15.5px;margin-top:11px;padding-top:11px;border-top:1px solid var(--hair)">${esc(r.bridge.a.meant)}</p></div>
-          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)} said</div>
-            <p style="font-size:14.5px;color:var(--mist);line-height:1.5">${esc(r.bridge.b.said)}</p>
-            <p style="font-size:15.5px;margin-top:11px;padding-top:11px;border-top:1px solid var(--hair)">${esc(r.bridge.b.meant)}</p></div></div></div>
-
-      <div class="sect"><h3 class="h3">What neither of you said out loud</h3>
-        <div class="split">
-          <div class="card"><div class="side-label a"><span class="dot a"></span>${esc(A)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.a)}</p></div>
-          <div class="card"><div class="side-label b"><span class="dot b"></span>${esc(B)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.b)}</p></div></div></div>
+      <div class="sect"><h3 class="h3">A word for ${esc(wrong)}, just for you</h3>
+        <p class="lede">The mediator wants one private minute with ${esc(wrong)} — out loud, on this screen.</p>
+        <div class="card"><p style="font-size:16px;line-height:1.65;white-space:pre-wrap" id="convTxt">…</p></div>
+        <p class="tiny" id="convHint" style="margin-top:9px">You will never be told you were wrong. This is only about seeing the same moment from over there.</p></div>
 
       <div class="sect"><h3 class="h3">The way out</h3>
         <div class="stack">${r.pact.map((p,i)=>`<div class="pactitem"><span class="pactnum">${i+1}</span><span style="font-size:14.5px;line-height:1.55">${esc(p)}</span></div>`).join("")}</div></div>
-
-      <div class="sect"><h3 class="h3">If you want the first word</h3>
-        <div class="stack">
-          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)} could say</div>
-            <p class="headline" style="font-size:18px;line-height:1.4">"${esc(r.apology.a)}"</p></div>
-          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)} could say</div>
-            <p class="headline" style="font-size:18px;line-height:1.4">"${esc(r.apology.b)}"</p></div></div></div>
-
-      <div class="sect"><h3 class="h3">Does this land?</h3>
-        <p class="lede">If it doesn't work for either of you, say so. The mediator will hear you out and write it again.</p>
-        <div class="stack">
-          ${["a","b"].map(k=>{
-            const nm = k==="a"?A:B;
-            const dis = (S.mode==="pair" && mySeat && mySeat!==k);
-            return `<div class="card ${k}"${dis?' style="opacity:.45"':""}>
-              <div class="side-label ${k}"><span class="dot ${k}"></span>${esc(nm)}${dis?" — their device":""}</div>
-              <div class="satrow">
-                <button class="satbtn yes" data-s="${k}" data-v="1" aria-pressed="${S[k].satisfied===true}" ${dis?"disabled":""}>
-                  <div class="ic">✓</div><div class="lb">This is fair</div><div class="sb">I can live with this</div></button>
-                <button class="satbtn no" data-s="${k}" data-v="0" aria-pressed="${S[k].satisfied===false}" ${dis?"disabled":""}>
-                  <div class="ic">✕</div><div class="lb">Not yet</div><div class="sb">Something's still wrong</div></button>
-              </div></div>`;
-          }).join("")}
-        </div>
-        <div class="stack" style="margin-top:16px">
-          <button class="btn bloom" id="proceed" disabled>Continue</button>
-          <button class="linkish" id="restart" style="text-align:center">Start a different mediation</button>
-        </div></div>
+    </div>
+    <div class="stack" style="padding-top:10px">
+      <button class="btn bloom" id="begin" disabled>${esc(wrong)} — first step into ${esc(right)}'s shoes</button>
+      <button class="linkish" id="restart" style="text-align:center">Start a different mediation</button>
     </div>`);
 
   const play=$("#playAll",n), sp=$("#spokenTxt",n);
@@ -2625,28 +2589,28 @@ function Findings(){
     Speak.flush(r.spoken, ()=>{ play.innerHTML=`${ICON.vol} Hear it again`; });
   };
 
-  const proceed=$("#proceed",n);
-  function sync(){
-    const aS=S.a.satisfied, bS=S.b.satisfied;
-    const both = aS!==null && bS!==null;
-    proceed.disabled = !both;
-    proceed.textContent = !both ? "Both of you answer first"
-      : (aS&&bS) ? "Close this out" : "Tell the mediator what's wrong";
-  }
-  n.querySelectorAll(".satbtn").forEach(b=>{
-    b.onclick=()=>{
-      const k=b.dataset.s, v=b.dataset.v==="1";
-      S[k].satisfied=v; save();
-      n.querySelectorAll(`.satbtn[data-s="${k}"]`).forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.v==="1" ? v : !v)));
-      sync();
-    };
-  });
-  sync();
-  proceed.onclick=()=>{
-    if(S.a.satisfied && S.b.satisfied) return go("flip");
-    if(S.round>=MAXROUNDS){ alert("You've been round this three times. Take a break and come back to it — that's a real answer too."); return go("sealed"); }
-    go("rebuttal");
-  };
+  const ct=$("#convTxt",n), hint=$("#convHint",n), begin=$("#begin",n);
+  const my=TOKEN;
+  (async()=>{
+    let t="";
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      t = String(await AI.chat([{role:"user",content:convincePrompt(hold)}],
+        {tier:"default", onText:({text:s})=>{ if(TOKEN===my) ct.textContent=s; }})).trim();
+    }catch(e){
+      const L=spokenLang();
+      t = L==="Malayalam"
+        ? `${wrong}, ഈ നിശബ്ദതയിൽ നിങ്ങൾ എന്താണ് വഹിക്കുന്നതെന്ന് ഞാൻ കേട്ടു. ഈ നിമിഷം ${right}യുടെ കണ്ണിലൂടെ കാണാനുള്ള അനുഗ്രഹം മാത്രം നിങ്ങൾക്ക് നൽകാം. എന്റെ കൂടെ വരൂ.`
+        : L==="Hindi"
+        ? `${wrong}, मैंने सुना कि आप यह कितना पकड़े हुए हैं। यही पल ${right} की नज़र से देखना — यह आप ही दे सकते हैं। मेरे साथ चलिए।`
+        : `${wrong}, I've heard how much you've been holding onto this. There's one thing only you can give ${right} — the grace of seeing that same moment through their eyes. Walk with me.`;
+    }
+    if(TOKEN!==my) return;
+    if(t){ ct.textContent=t; hint.hidden=true; }
+    begin.disabled=false;
+  })();
+
+  begin.onclick=()=>{ S.flip.order=hold; S.flip.a.done=false; S.flip.b.done=false; save(); go("flip"); };
   $("#restart",n).onclick=reset;
   wireTop(n,null);
   return n;
@@ -2848,6 +2812,7 @@ function Flip(){
   const A=S.flip.a, B=S.flip.b;
   if(!S.flip.fail && !A.script && !B.script){ FlipGen(); return FlipLoading(); }
   if(S.flip.fail && !A.script && !B.script) return FlipSkipScreen();
+  if(S.flip.order==="b"){ if(!B.done) return FlipRun("b"); if(!A.done) return FlipRun("a"); }
   if(!A.done) return FlipRun("a");
   if(!B.done) return FlipRun("b");
   return FlipDone();
@@ -3071,7 +3036,7 @@ function Sealed(){
   const n=stage(`
     <div class="grow center" style="display:flex;flex-direction:column;gap:24px;text-align:center">
       <div class="orbwrap" style="height:min(26dvh,190px)"></div>
-      <div class="stack"><h1 class="h2">${esc(S.a.name)} and ${esc(S.b.name)}, both agreed.</h1>
+      <div class="stack"><h1 class="h2">${esc(S.a.name)} and ${esc(S.b.name)} — you walked in each other's shoes.</h1>
         <p class="headline" style="color:var(--mist);font-size:19px;margin-top:10px">${esc(r.closing)}</p></div>
       ${hasFlip?`<div class="card bloom" style="text-align:left"><div class="stack sm">
         <p class="tiny" style="color:var(--bloom)">${esc(T("through"))}</p>
