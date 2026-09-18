@@ -1361,6 +1361,72 @@ const pureRewrite = async (lang, draft)=>{
   return draft;
 };
 
+/* Visible UI copy that would otherwise stay English inside a Malayalam/Hindi
+   mediation. Everything shown or spoken on the perspective-flip screens runs
+   through T(), so the language never flips mid-script. */
+const FLIP_T = {
+  "step":                    { en:"step", ml:"ഘട്ടം", hi:"चरण" },
+  "of":                      { en:"of", ml:"/", hi:"/" },
+  "eyeOf":                   { en:", looking through {N}'s eyes", ml:" — {N}യുടെ കണ്ണിലൂടെ നോക്കുന്നു", hi:" — {N} की नज़र से देख रहे हैं" },
+  "speaking":                { en:"Speaking", ml:"സംസാരിക്കുന്നു", hi:"बोल रहा हूँ" },
+  "reading":                 { en:"Reading", ml:"വായിക്കുന്നു", hi:"पढ़ रहा हूँ" },
+  "your turn":               { en:"Your turn", ml:"നിങ്ങളുടെ ഊഴം", hi:"आपकी बारी" },
+  "the gap":                 { en:"The gap", ml:"തെറ്റിദ്ധാരണ", hi:"ग़लतफ़हमी" },
+  "the bridge":              { en:"The bridge", ml:"പാലം", hi:"पुल" },
+  "done":                    { en:"Done", ml:"കഴിഞ്ഞു", hi:"हो गया" },
+  "intro":                   { en:"Let's look at this through {N}'s eyes for a few minutes. It doesn't make {M}'s way wrong — it's a door you haven't opened yet.", ml:"നമുക്ക് കുറച്ച് മിനിറ്റ് {N}യുടെ കണ്ണിലൂടെ നോക്കാം. {M}യുടെ വഴി തെറ്റാണെന്നല്ല ഇത് അർത്ഥമാക്കുന്നത് — നിങ്ങൾ ഇതുവരെ തുറക്കാത്ത ഒരു വാതിലാണ്.", hi:"आइए कुछ देर {N} की नज़र से देखें। इसका मतलब यह नहीं है कि {M} का तरीका ग़लत है — यह एक दरवाज़ा है जो आपने अभी तक नहीं खोला।" },
+  "from":                    { en:"Where they're coming from", ml:"അവർ എവിടെ നിന്ന് വരുന്നു", hi:"वे कहाँ से आ रहे हैं" },
+  "emoHead":                 { en:"Event, and what it meant to them", ml:"സംഭവം, അത് അവർക്ക് എന്താണ് അർത്ഥമാക്കിയത്", hi:"घटना, और इसका उनके लिए क्या मतलब था" },
+  "emo":                     { en:"{N} read \"{Q}\" as {R}. That felt like {F}, and the reaction was to {A}.", ml:"{N} \"{Q}\" എന്ന് {R} ആയി വായിച്ചു. ആ തോന്നൽ {F} ആയിരുന്നു, പ്രതികരണം {A} എന്നതായിരുന്നു.", hi:"{N} ने \"{Q}\" को {R} के रूप में पढ़ा। वह महसूस हुआ {F}, और प्रतिक्रिया {A} की थी।" },
+  "asm":                     { en:"An assumption you've been carrying", ml:"നിങ്ങൾ കൊണ്ടുനടക്കുന്ന ഒരു ധാരണ", hi:"एक धारणा जो आप लिए हुए हैं" },
+  "rpHead":                  { en:"Now you are them", ml:"ഇപ്പോൾ നിങ്ങളാണ് അവർ", hi:"अब आप ही वे हैं" },
+  "rpAsk":                   { en:"Roleplay", ml:"വേഷം അവതരിപ്പിക്കൽ", hi:"भूमिका निभाएँ" },
+  "hold":                    { en:"Hold that next to what they said", ml:"അത് അവർ പറഞ്ഞതിനൊപ്പം നിർത്തുക", hi:"इसे उनकी बात के आगे रखिए" },
+  "gapYTh":                  { en:"What {N} thought", ml:"{N} കരുതിയത്", hi:"{N} ने क्या सोचा" },
+  "gapSaid":                 { en:"What {N} actually said", ml:"{N} യഥാർത്ഥത്തിൽ പറഞ്ഞത്", hi:"{N} ने वास्तव में क्या कहा" },
+  "gapMis":                  { en:"The misunderstanding", ml:"തെറ്റിദ്ധാരണ", hi:"ग़लतफ़हमी" },
+  "brThem":                  { en:"What {N} may have misunderstood about {M}", ml:"ഹോ സാധ്യത, {N}ക്ക് {M}നെക്കുറിച്ച് തെറ്റിദ്ധാരണ ഉണ്ടായത്", hi:"हो सकता है {N} ने {M} के बारे में ग़लत समझा हो" },
+  "brYou":                   { en:"What {N} may have misunderstood about {M}", ml:"ഹോ സാധ്യത, {N}ക്ക് {M}നെക്കുറിച്ച് തെറ്റിദ്ധാരണ ഉണ്ടായത്", hi:"हो सकता है {N} ने {M} के बारे में ग़लत समझा हो" },
+  "brBoth":                  { en:"What both can understand now", ml:"ഇപ്പോൾ രണ്ടുപേർക്കും മനസ്സിലാക്കാവുന്നത്", hi:"अब दोनों क्या समझ सकते हैं" },
+  "res1":                    { en:"For them to understand", ml:"അവർ മനസ്സിലാക്കാൻ", hi:"उनके समझने के लिए" },
+  "res2":                    { en:"Something you could change", ml:"നിങ്ങൾക്ക് മാറ്റാവുന്ന ഒന്ന്", hi:"कुछ ऐसा जो आप बदल सकते हैं" },
+  "resStmt":                 { en:"What you both came to understand", ml:"നിങ്ങൾ രണ്ടുപേരും മനസ്സിലാക്കിയത്", hi:"आप दोनों क्या समझे" },
+  "next":                    { en:"Next", ml:"അടുത്തത്", hi:"आगे" },
+  "continue":                { en:"continue", ml:"തുടരുക", hi:"जारी रखें" },
+  "finish":                  { en:"finish", ml:"പൂർത്തിയാക്കുക", hi:"समाप्त करें" },
+  "say":                     { en:"Say it", ml:"പറയൂ", hi:"बोलें" },
+  "doneKeep":                { en:"Done — keep going", ml:"ശരി — തുടരുക", hi:"ठीक है — जारी रखें" },
+  "phSay":                   { en:"Say it out loud… or type it here", ml:"ഉറക്കെ പറയൂ… അല്ലെങ്കിൽ ഇവിടെ ടൈപ്പ് ചെയ്യൂ", hi:"ज़ोर से बोलें… या यहाँ टाइप करें" },
+  "first":                   { en:"Say or type something first.", ml:"ആദ്യം എന്തെങ്കിലും പറയൂ അല്ലെങ്കിൽ ടൈപ്പ് ചെയ്യൂ.", hi:"पहले कुछ बोलें या टाइप करें।" },
+  "noted":                   { en:"Noted. Keep going.", ml:"ശ്രദ്ധിച്ചു. തുടരൂ.", hi:"नोट हो गया। जारी रखें।" },
+  "listening":               { en:"Listening…", ml:"കേൾക്കുന്നു…", hi:"सुन रहा हूँ…" },
+  "catch":                   { en:"I didn't catch that — try again or type.", ml:"മനസ്സിലായില്ല — വീണ്ടും പറയൂ അല്ലെങ്കിൽ ടൈപ്പ് ചെയ്യൂ.", hi:"समझ नहीं आया — फिर से बोलिए या टाइप कीजिए।" },
+  "flip":                    { en:"Perspective flip", ml:"വീക്ഷണം മാറ്റം", hi:"दृष्टिकोण बदलाव" },
+  "buildH":                  { en:"Building the perspective flips", ml:"വീക്ഷണം മാറ്റങ്ങൾ തയ്യാറാക്കുന്നു", hi:"दृष्टिकोण बदलाव बनाए जा रहे हैं" },
+  "buildS":                  { en:"One for {N}, one for {M} — each walks through the dispute from the other person's eyes.", ml:"ഒന്ന് {N}-ന്, ഒന്ന് {M}-ന് — ഓരോരുത്തരും മറ്റേയാളുടെ കണ്ണിലൂടെ വഴക്ക് കടന്നുപോകും.", hi:"एक {N} के लिए, एक {M} के लिए — हर कोई दूसरे की नज़र से झगड़ा देखेगा।" },
+  "buildW":                  { en:"Working from both accounts", ml:"രണ്ടു പേരുടെയും വാക്കുകളിൽ നിന്ന്", hi:"दोनों की बातों से" },
+  "unsafeH":                 { en:"This one needs people, not an app.", ml:"ഇത് ആപ്പല്ല, മനുഷ്യരെ വേണം.", hi:"इसके लिए ऐप नहीं, इंसान चाहिए।" },
+  "unsafeP":                 { en:"The mediator read something in these accounts that points toward a safety situation. That's beyond what a machine should mediate — please talk to someone you trust, or to a professional, and if someone is in danger right now, involve emergency services first.", ml:"ഈ വാക്കുകളിൽ സുരക്ഷാ ആശങ്കയുള്ള എന്തോ കണ്ടു. അത് യന്ത്രം മധ്യസ്ഥത ചെയ്യേണ്ടതല്ല — വിശ്വസ്തരായ ആരോടോ പ്രൊഫഷണലിനോടോ സംസാരിക്കുക; ആർക്കെങ്കിലും അപകടമുണ്ടെങ്കിൽ ഉടൻ എമർജൻസി സേവനങ്ങളെ വിളിക്കുക.", hi:"इन बातों में वक्ता ने कुछ ऐसा पढ़ा जो सुरक्षा से जुड़ा लगता है। यह मशीन के मध्यस्थता से बाहर है — किसी भरोसेमंद या पेशेवर से बात करें, और अगर अभी कोई ख़तरे में है तो पहले इमरजेंसी सेवाओं को बुलाएँ।" },
+  "unsafeB":                 { en:"I'll close this out", ml:"ഞാൻ ഇത് അവസാനിപ്പിക്കുന്നു", hi:"मैं इसे समाप्त कर दूँगा" },
+  "skipH":                   { en:"The flip couldn't be built right now.", ml:"ഇപ്പോൾ വീക്ഷണം മാറ്റം ഉണ്ടാക്കാനായില്ല.", hi:"अभी दृष्टिकोण बदलाव नहीं बन पाया।" },
+  "skipP":                   { en:"Check that the mediator is connected, then retry — or skip it. It's a bonus step, not the point of what you've already done.", ml:"മധ്യസ്ഥൻ കണക്റ്റ് ചെയ്തോ എന്ന് നോക്കി വീണ്ടും ശ്രമിക്കുക — അല്ലെങ്കിൽ ഒഴിവാക്കുക. ഇത് ഒരു അധിക ഘട്ടം മാത്രമാണ്.", hi:"पहले देखें कि वक्ता जुड़ा है, फिर दोबारा कोशिश करें — या छोड़ दें। यह एक अतिरिक्त कदम है।" },
+  "tryAgain":                { en:"Try again", ml:"വീണ്ടും ശ്രമിക്കുക", hi:"फिर से कोशिश करें" },
+  "skip":                    { en:"Skip the flip", ml:"വീക്ഷണം മാറ്റം ഒഴിവാക്കുക", hi:"दृष्टिकोण बदलाव छोड़ें" },
+  "bothH":                   { en:"What both of you came to understand", ml:"നിങ്ങൾ രണ്ടുപേരും മനസ്സിലാക്കിയത്", hi:"आप दोनों क्या समझे" },
+  "bothP":                   { en:"Each of you walked through the dispute from the other side. This is where you landed.", ml:"ഓരോരുത്തരും മറ്റേയാളുടെ വശത്ത് നിന്ന് വഴക്ക് കടന്നു. നിങ്ങൾ എത്തിനിന്നത് ഇവിടെയാണ്.", hi:"आप में से हर एक ने दूसरे की तरफ़ से झगड़ा देखा। आप यहाँ पहुँचे हैं।" },
+  "said":                    { en:"said", ml:" പറഞ്ഞു", hi:" ने कहा" },
+  "sawOther":                { en:"I saw it from the other side.", ml:"മറ്റേയാളുടെ വശത്ത് നിന്ന് ഞാൻ കണ്ടു.", hi:"मैंने दूसरे की तरफ़ से देखा।" },
+  "close":                   { en:"Close this out", ml:"ഇത് അവസാനിപ്പിക്കുക", hi:"इसे समाप्त करें" },
+  "through":                 { en:"Through the perspective flip", ml:"വീക്ഷണം മാറ്റത്തിലൂടെ", hi:"दृष्टिकोण बदलाव के माध्यम से" },
+};
+const T = k=>{
+  const L = spokenLang();
+  return (FLIP_T[k] && (FLIP_T[k][L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] != null))
+    ? FLIP_T[k][L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] : (FLIP_T[k]&&FLIP_T[k].en)||k;
+};
+const Tt = (k, map)=>String(T(k)).replace(/\{(\w+)\}/g,(_,w)=> (map&&(map[w]!=null)?map[w]:("{"+w+"}")));
+const Tp = (k, a, b)=>Tt(k,{A:a,B:b,N:a,M:b});
+
 function doubtsPrompt(){
   return `You are the mediator in "Obviously, I'm Right". You have now heard both people privately, separately.
 
@@ -2768,7 +2834,9 @@ async function FlipGen(){
     if(TOKEN!==my) return;
     const L = spokenLang();
     if(L!=="English"){
-      const needs = sc => !sc || scriptPurity(L, valuesOnly(sc)) < 0.8;
+      const names = ((S.a.name||"")+" "+(S.b.name||"")).split(/\s+/).filter(w=>/^[A-Za-z]/.test(w));
+      const foreignWords = sc => (JSON.stringify(valuesOnly(sc)).match(/[A-Za-z]{3,}/g)||[]).filter(w=>!names.includes(w)).length;
+      const needs = sc => !sc || scriptPurity(L, valuesOnly(sc)) < 0.9 || foreignWords(sc) > 2;
       const scold = w => "HARD REQUIREMENT: this flip must be written entirely in pure "+L+". The previous draft mixes "+L+" with English or other languages, or uses Latin transliteration. Rewrite the ENTIRE JSON so every value is pure "+L+" script: no English, no other language, no Latin letters, no mixing. Keep the JSON keys exactly as they are.";
       if(needs(S.flip.a.script)){
         try{
@@ -2807,25 +2875,25 @@ function FlipLoading(){
     <div class="synth grow">
       <div style="height:clamp(110px,24dvh,200px)"></div>
       <div class="stack sm" style="text-align:center">
-        <h2 class="h2">Building the perspective flips</h2>
-        <p class="lede" style="margin-inline:auto">One for ${esc(S.a.name)}, one for ${esc(S.b.name)} — each walks through the dispute from the other person's eyes.</p>
+        <h2 class="h2">${esc(T("buildH"))}</h2>
+        <p class="lede" style="margin-inline:auto">${esc(Tt("buildS",{N:S.a.name,M:S.b.name}))}</p>
       </div>
-      <div class="waiting"><i></i><span>Working from both accounts</span></div></div>`);
+      <div class="waiting"><i></i><span>${esc(T("buildW"))}</span></div></div>`);
   wireTop(n,null); return n;
 }
 
 function FlipUnsafe(){
   Sky.setMerge(.85); Sky.setEnergy(.3); Sky.setFocus(0);
   const n=stage(`
-    ${topbar("Perspective flip",false)}
+    ${topbar(T("flip"),false)}
     <div class="grow center" style="display:flex;flex-direction:column;gap:20px;text-align:center">
       <div class="sealmark" style="width:96px;height:96px">${ICON.lock}</div>
       <div class="stack sm" style="margin-inline:auto;max-width:44ch">
-        <h2 class="h2">This one needs people, not an app.</h2>
-        <p class="lede">The mediator read something in these accounts that points toward a safety situation. That's beyond what a machine should mediate — please talk to someone you trust, or to a professional, and if someone is in danger right now, involve emergency services first.</p>
+        <h2 class="h2">${esc(T("unsafeH"))}</h2>
+        <p class="lede">${esc(T("unsafeP"))}</p>
       </div>
     </div>
-    <div class="stack"><button class="btn ghost" id="cont">I'll close this out</button></div>`);
+    <div class="stack"><button class="btn ghost" id="cont">${esc(T("unsafeB"))}</button></div>`);
   $("#cont",n).onclick=()=>go("sealed");
   wireTop(n,null); return n;
 }
@@ -2833,15 +2901,15 @@ function FlipUnsafe(){
 function FlipSkipScreen(){
   Sky.setMerge(.85); Sky.setEnergy(.4); Sky.setFocus(0);
   const n=stage(`
-    ${topbar("Perspective flip",false)}
+    ${topbar(T("flip"),false)}
     <div class="grow center" style="display:flex;flex-direction:column;gap:20px;text-align:center">
       <div class="stack sm" style="margin-inline:auto;max-width:44ch">
-        <h2 class="h2">The flip couldn't be built right now.</h2>
-        <p class="lede">Check that the mediator is connected, then retry — or skip it. It's a bonus step, not the point of what you've already done.</p>
+        <h2 class="h2">${esc(T("skipH"))}</h2>
+        <p class="lede">${esc(T("skipP"))}</p>
       </div>
     </div>
-    <div class="stack"><button class="btn bloom" id="retry">Try again</button>
-      <button class="linkish" id="skip" style="text-align:center">Skip the flip</button></div>`);
+    <div class="stack"><button class="btn bloom" id="retry">${esc(T("tryAgain"))}</button>
+      <button class="linkish" id="skip" style="text-align:center">${esc(T("skip"))}</button></div>`);
   $("#retry",n).onclick=()=>{ S.flip.fail=false; S.flip.a.script=null; S.flip.b.script=null; save(); go("flip"); };
   $("#skip",n).onclick=()=>go("sealed");
   wireTop(n,null); return n;
@@ -2851,13 +2919,13 @@ function FlipRun(side){
   const st=S.flip[side], who=S[side], o=side==="a"?"b":"a", other=S[o], sc=st.script;
   Sky.setMerge(.85); Sky.setEnergy(.55); Sky.setFocus(1);
   const n=stage(`
-    ${topbar("Perspective flip",false)}
+    ${topbar(T("flip"),false)}
     <div class="whobar"><span class="dot ${side}"></span>
-      <span class="name">${esc(who.name)}, looking through ${esc(other.name)}'s eyes</span>
-      <span class="meta" id="flmeta">step 1 of 1</span></div>
+      <span class="name">${esc(who.name)}${esc(Tt("eyeOf",{N:other.name}))}</span>
+      <span class="meta" id="flmeta">${esc(T("step"))} 1 ${esc(T("of"))} 1</span></div>
     <div class="rail ${side}"><i id="flrail" style="width:0%"></i></div>
     <div class="voice grow">
-      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">speaking</span></div></div>
+      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">${esc(T("speaking"))}</span></div></div>
       <div class="caption" id="cap" style="white-space:pre-wrap"></div>
       <div id="flask"></div>
       <p class="tiny" id="flhint" style="text-align:center;padding-top:8px"></p>
@@ -2865,21 +2933,21 @@ function FlipRun(side){
   wireTop(n,null);
 
   const cards=[];
-  cards.push({k:"narrate", t:`Let's look at this through ${other.name}'s eyes for a few minutes. It doesn't make ${who.name}'s way wrong — it's a door you haven't opened yet.`});
-  if(sc.intro) cards.push({k:"narrate", head:"Where they're coming from", t:sc.intro});
-  (sc.emotions||[]).forEach(e=>cards.push({k:"narrate", head:"Event, and what it meant to them", t:`${other.name} read "…${e.event}" as ${e.theirRead}. That felt like ${e.theirFeeling}, and the reaction was to ${e.theirAction}. EVENT, what it meant to them, feeling, action.`}));
-  (sc.assumptions||[]).forEach(a=>cards.push({k:"narrate", head:"An assumption you've been carrying", t:a}));
+  cards.push({k:"narrate", t:Tp("intro", other.name, who.name)});
+  if(sc.intro) cards.push({k:"narrate", head:T("from"), t:sc.intro});
+  (sc.emotions||[]).forEach(e=>cards.push({k:"narrate", head:T("emoHead"), t:Tt("emo",{N:other.name,Q:e.event,R:e.theirRead,F:e.theirFeeling,A:e.theirAction})}));
+  (sc.assumptions||[]).forEach(a=>cards.push({k:"narrate", head:T("asm"), t:a}));
   if(sc.roleplay){
-    cards.push({k:"narrate", head:"Now you are them", t:sc.roleplay.setup});
-    cards.push({k:"ask", head:"Roleplay", t:sc.roleplay.question});
-    cards.push({k:"narrate", head:"Hold that next to what they said", t:sc.roleplayNote});
+    cards.push({k:"narrate", head:T("rpHead"), t:sc.roleplay.setup});
+    cards.push({k:"ask", head:T("rpAsk"), t:sc.roleplay.question});
+    cards.push({k:"narrate", head:T("hold"), t:sc.roleplayNote});
   }
   if(sc.gap) cards.push({k:"gap", gap:sc.gap});
   if(sc.bridge) cards.push({k:"bridge", bridge:sc.bridge});
   if(sc.resolution){
-    cards.push({k:"ask", head:"For them to understand", t:sc.resolution.q1});
-    cards.push({k:"ask", head:"Something you could change", t:sc.resolution.q2});
-    cards.push({k:"narrate", head:"What you both came to understand", t:sc.resolution.statement});
+    cards.push({k:"ask", head:T("res1"), t:sc.resolution.q1});
+    cards.push({k:"ask", head:T("res2"), t:sc.resolution.q2});
+    cards.push({k:"narrate", head:T("resStmt"), t:sc.resolution.statement});
   }
   cards.push({k:"end"});
 
@@ -2890,40 +2958,41 @@ function FlipRun(side){
   let said="";
 
   function narrate(card){
-    vst.textContent=Speak.enabled?"speaking":"reading"; vst.classList.add("live");
+    vst.textContent= Speak.enabled?T("speaking"):T("reading"); vst.classList.add("live");
     cap.textContent=(card.head?card.head+"\n\n":"")+card.t;
-    try{ Speak.cancel(); Speak.feed(card.t); Speak.flush(card.t,()=>{ if(alive() && cited===i) vst.textContent="done"; }); }catch(e){}
+    try{ Speak.cancel(); Speak.feed(card.t); Speak.flush(card.t,()=>{ if(alive() && cited===i) vst.textContent=T("done"); }); }catch(e){}
     const next=cards[i+1];
-    hint.innerHTML=`<button class="btn ${side}" id="flnext">Next — ${next?(next.k==="ask"?"your turn":"continue"):"finish"}</button>`;
+    const w = next ? (next.k==="ask" ? T("your turn") : T("continue")) : T("finish");
+    hint.innerHTML=`<button class="btn ${side}" id="flnext">${esc(T("next"))} — ${esc(w)}</button>`;
     $("#flnext",n).onclick=renderCard;
   }
 
   function showAsk(card){
-    vst.textContent="your turn"; vst.classList.remove("live");
+    vst.textContent=T("your turn"); vst.classList.remove("live");
     cap.textContent=(card.head?card.head+"\n\n":"")+card.t;
     askBox.innerHTML=`<div class="composer" style="border-top:1px solid var(--hair);padding-top:10px;margin-top:12px">
-        <textarea class="ta" id="flsay" rows="2" placeholder="Say it out loud… or type it here"></textarea>
+        <textarea class="ta" id="flsay" rows="2" placeholder="${esc(T("phSay"))}"></textarea>
         <div class="btnrow" style="margin-top:8px">
-          <button class="btn sm ghost" id="flmic" style="${Ears.supported()?"":"display:none"}">${ICON.mic} Say it</button>
-          <button class="btn sm ${side}" id="flok">Done — keep going</button>
+          <button class="btn sm ghost" id="flmic" style="${Ears.supported()?"":"display:none"}">${ICON.mic} ${esc(T("say"))}</button>
+          <button class="btn sm ${side}" id="flok">${esc(T("doneKeep"))}</button>
         </div></div>`;
     const say=$("#flsay",n), ok=$("#flok",n), mic=$("#flmic",n);
     said="";
     const settle=()=>{
-      const v=(said||say.value).trim(); if(!v){ hint.textContent="Say or type something first."; return; }
+      const v=(said||say.value).trim(); if(!v){ hint.textContent=T("first"); return; }
       Ears.stop(false,true);
       answers.push(v); st.answers=answers.slice(); st.idx=i; save();
-      hint.textContent="Noted. Keep going.";
+      hint.textContent=T("noted");
       say.value="";
       renderCard();
     };
     mic.onclick=()=>{
       if(Ears.listening){ Ears.stop(true); return; }
-      said=""; say.value=""; hint.textContent="Listening…"; mic.innerHTML=ICON.stop; mic.classList.add("bloom");
+      said=""; say.value=""; hint.textContent=T("listening"); mic.innerHTML=ICON.stop; mic.classList.add("bloom");
       Ears.start({
         partial:t=>{ say.value=t; },
         final:t=>{ said=t; say.value=t; },
-        onHeld:()=>{ if(alive()){ hint.textContent="I didn't catch that — try again or type."; mic.innerHTML=ICON.mic; mic.classList.remove("bloom"); } }
+        onHeld:()=>{ if(alive()){ hint.textContent=T("catch"); mic.innerHTML=ICON.mic; mic.classList.remove("bloom"); } }
       });
     };
     ok.onclick=settle;
@@ -2937,7 +3006,7 @@ function FlipRun(side){
     if(!alive()) return;
     i++;
     const card=cards[i];
-    meta.textContent=`step ${Math.min(i+1,cards.length)} of ${cards.length}`;
+    meta.textContent=`${T("step")} ${Math.min(i+1,cards.length)} ${T("of")} ${cards.length}`;
     rail.style.width=Math.round((i+1)/cards.length*100)+"%";
     cited=i;
     askBox.innerHTML=""; hint.textContent="";
@@ -2945,28 +3014,28 @@ function FlipRun(side){
     if(card.k==="narrate") return narrate(card);
     if(card.k==="ask") return showAsk(card);
     if(card.k==="gap"){
-      vst.textContent="the gap"; vst.classList.remove("live"); cap.textContent="";
+      vst.textContent=T("the gap"); vst.classList.remove("live"); cap.textContent="";
       const g=card.gap;
       askBox.innerHTML=`<div class="stack" style="padding-top:10px">
-        <div class="card ${side}"><div class="side-label ${side}"><span class="dot ${side}"></span>What ${esc(who.name)} thought</div>
+        <div class="card ${side}"><div class="side-label ${side}"><span class="dot ${side}"></span>${esc(Tt("gapYTh",{N:who.name}))}</div>
           <p style="font-size:15px;line-height:1.5">${esc(g.youThought)}</p></div>
-        <div class="card ${o}"><div class="side-label ${o}"><span class="dot ${o}"></span>What ${esc(other.name)} actually said</div>
+        <div class="card ${o}"><div class="side-label ${o}"><span class="dot ${o}"></span>${esc(Tt("gapSaid",{N:other.name}))}</div>
           <p style="font-size:15px;line-height:1.5">"${esc(g.theySaid)}"</p></div>
-        <div class="card bloom"><div class="side-label bloom"><span class="dot bloom"></span>The misunderstanding</div>
+        <div class="card bloom"><div class="side-label bloom"><span class="dot bloom"></span>${esc(T("gapMis"))}</div>
           <p style="font-size:15px;line-height:1.5">${esc(g.misunderstanding)}</p></div>
-        <button class="btn ${side}" id="flnext">Next</button></div>`;
+        <button class="btn ${side}" id="flnext">${esc(T("next"))}</button></div>`;
       try{ Speak.cancel(); Speak.feed(g.misunderstanding); Speak.flush(g.misunderstanding,()=>{}); }catch(e){}
       $("#flnext",n).onclick=renderCard;
       return;
     }
     if(card.k==="bridge"){
-      vst.textContent="the bridge"; vst.classList.remove("live"); cap.textContent="";
+      vst.textContent=T("the bridge"); vst.classList.remove("live"); cap.textContent="";
       const b=card.bridge;
       askBox.innerHTML=`<div class="stack" style="padding-top:10px">
-        <div class="card"><p style="font-size:14px;line-height:1.5"><b>What ${esc(who.name)} may have misunderstood about ${esc(other.name)}</b><br><span style="color:var(--mist)">${esc(b.aboutThem)}</span></p></div>
-        <div class="card"><p style="font-size:14px;line-height:1.5"><b>What ${esc(other.name)} may have misunderstood about ${esc(who.name)}</b><br><span style="color:var(--mist)">${esc(b.aboutYou)}</span></p></div>
-        <div class="card bloom"><p style="font-size:14px;line-height:1.5"><b>What both can understand now</b><br>${esc(b.bothNow)}</p></div>
-        <button class="btn ${side}" id="flnext">Next</button></div>`;
+        <div class="card"><p style="font-size:14px;line-height:1.5"><b>${esc(Tt("brThem",{N:who.name,M:other.name}))}</b><br><span style="color:var(--mist)">${esc(b.aboutThem)}</span></p></div>
+        <div class="card"><p style="font-size:14px;line-height:1.5"><b>${esc(Tt("brYou",{N:other.name,M:who.name}))}</b><br><span style="color:var(--mist)">${esc(b.aboutYou)}</span></p></div>
+        <div class="card bloom"><p style="font-size:14px;line-height:1.5"><b>${esc(T("brBoth"))}</b><br>${esc(b.bothNow)}</p></div>
+        <button class="btn ${side}" id="flnext">${esc(T("next"))}</button></div>`;
       $("#flnext",n).onclick=renderCard;
       return;
     }
@@ -2990,18 +3059,18 @@ function FlipDone(){
   const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
   const sb=S.flip.b.statement||S.flip.b.script?.resolution?.statement||"";
   const n=stage(`
-    ${topbar("Perspective flip",false)}
+    ${topbar(T("flip"),false)}
     <div class="grow stack lg">
-      <div><h2 class="h2">What both of you came to understand</h2>
-        <p class="lede" style="margin-top:9px">Each of you walked through the dispute from the other side. This is where you landed.</p></div>
+      <div><h2 class="h2">${esc(T("bothH"))}</h2>
+        <p class="lede" style="margin-top:9px">${esc(T("bothP"))}</p></div>
       <div class="stack">
-        <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(S.a.name)} said</div>
-          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sa||"I saw it from the other side.")}</p></div>
-        <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(S.b.name)} said</div>
-          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sb||"I saw it from the other side too.")}</p></div>
+        <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(S.a.name)} ${esc(T("said"))}</div>
+          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sa||T("sawOther"))}</p></div>
+        <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(S.b.name)} ${esc(T("said"))}</div>
+          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sb||T("sawOther"))}</p></div>
       </div>
     </div>
-    <div class="stack"><button class="btn bloom" id="goSeal">Close this out</button></div>`);
+    <div class="stack"><button class="btn bloom" id="goSeal">${esc(T("close"))}</button></div>`);
   $("#goSeal",n).onclick=()=>go("sealed");
   wireTop(n,null); return n;
 }
@@ -3021,7 +3090,7 @@ function Sealed(){
       <div class="stack"><h1 class="h2">${esc(S.a.name)} and ${esc(S.b.name)}, both agreed.</h1>
         <p class="headline" style="color:var(--mist);font-size:19px;margin-top:10px">${esc(r.closing)}</p></div>
       ${hasFlip?`<div class="card bloom" style="text-align:left"><div class="stack sm">
-        <p class="tiny" style="color:var(--bloom)">Through the perspective flip</p>
+        <p class="tiny" style="color:var(--bloom)">${esc(T("through"))}</p>
         ${sa?`<p style="font-size:14px;line-height:1.55">${esc(S.a.name)}: "${esc(sa)}"</p>`:""}
         ${sb?`<p style="font-size:14px;line-height:1.55">${esc(S.b.name)}: "${esc(sb)}"</p>`:""}
       </div></div>`:""}
@@ -3054,7 +3123,7 @@ function summaryText(){
   L.push("","FIRST WORDS",`  ${A}: "${r.apology.a}"`,`  ${B}: "${r.apology.b}"`);
   const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
   const sb=S.flip.b.statement||S.flip.b.script?.resolution?.statement||"";
-  if(sa||sb){ L.push("","PERSPECTIVE FLIP");
+  if(sa||sb){ L.push("",""+T("flip").toUpperCase());
     if(sa) L.push(`  ${A}: "${sa}"`);
     if(sb) L.push(`  ${B}: "${sb}"`); }
   L.push("",r.closing);
