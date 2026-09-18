@@ -614,7 +614,7 @@ const Speak = (()=>{
     if(next===undefined){ speaking=false; fakeLevel(false); onDone&&onDone(); onDone=null; return; }
     if(!next.trim()) return drain();
     speaking=true; fakeLevel(true);
-    const lang = selectedLang();
+    const lang = selectedLang() || (globalThis.AI && AI.lastLang) || "";
     const play = cloudLang(lang) ? speakCloud(next, lang) : speakLocal(next, lang);
     Promise.resolve(play).finally(()=>{ speaking=false; drain(); });
   }
@@ -745,6 +745,7 @@ const AI = {
   async init(){
     this.proxyBase = store.get("proxy", null) || "/.netlify/functions/ai";
     this.serverUrl = null;
+    this.lastLang = "";
     this.keys.groq   = store.get("key_groq",   "");
     this.keys.openai = store.get("key_openai", "");
     this.keys.gemini = store.get("key_gemini", store.get("key", null)); // migrate the old single key slot
@@ -789,6 +790,7 @@ const AI = {
       else if(/[\u0900-\u097F]/.test(c)) l="hi-IN";
       else l="en";
     }
+    this.lastLang = l;
     if(l && /^ml[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Malayalam, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
     if(l && /^hi[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Hindi, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
     return turns;
