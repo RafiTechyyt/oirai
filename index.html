@@ -1182,7 +1182,7 @@ const Net = (()=>{
   const fire = ()=>{ store.set("last",S); onChange && onChange(); };
 
   return {
-    init, available, label, code, listen, stopListen, read, write,
+    init, available, label, code, listen, stopListen, read, write, destroy,
     get kind(){ return kind; },
     push(){ write(); },
     onChange(fn){ onChange=fn; },
@@ -1205,6 +1205,17 @@ const Net = (()=>{
       absorb(d);
       S.b.name = S.b.name || d.b?.name || "";
       listen(); write(); return true;
+    },
+    async destroy(){
+      const r = S.room;
+      stopListen();
+      if(kind!=="local" && r){
+        try{
+          if(kind==="db") await db.doc("rooms/"+r).delete();
+          else await fetch(`${fbUrl}/rooms/${r}.json`,{method:"DELETE"});
+        }catch(e){}
+      }
+      return r;
     }
   };
 })();
@@ -1236,8 +1247,9 @@ How you behave:
 - If an answer is vague, ask about the one concrete moment instead.
 - If they vent or swear, take it without flinching and ask the next question.
 - Speech-to-text will garble some words. Never comment on typos or odd wording; infer what they meant.
+- Never ask the same question twice or reuse a question's shape; every question must grow out of what they just said.
 
-When you can represent ${me} fairly, say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Reach <ENOUGH> by question ${MAXQ} at the latest.
+When you can represent ${me} fairly — sometimes as early as question two — say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Never pass question ${MAXQ}.
 
 Start now: one sentence that makes ${me} feel safe, then your first question.`;
 }
@@ -1266,7 +1278,7 @@ ${sideText("b")}
 Before you write anything they will read together, you get one round of clarification. Find the places where the two accounts genuinely don't line up, or where something important is missing, and ask each person about it.
 
 Rules:
-- Ask each person exactly 2 questions.
+- Ask each person exactly 1 or 2 questions; only use 2 when something material is still genuinely unclear, never more than 2.
 - Each question under 28 words, spoken plainly out loud.
 - NEVER reveal what the other person said. Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
 - Ask about facts, sequence and intent, not about feelings you already have.
@@ -1307,6 +1319,7 @@ Obligations:
 - Separate facts from feelings from assumptions. Assumptions are where the damage lives.
 - Where the accounts truly conflict on a fact, mark it disputed, give both versions, decide nothing.
 - Write so BOTH could read it aloud without feeling ambushed.
+- Shape every chapter to THIS conflict and these two people; never reuse generic phrasings.
 
 Reply with ONLY this JSON, no fence:
 {
@@ -1636,6 +1649,7 @@ function voiceShell({title,back,name,side,meta}){
         <button class="vbtn sm" id="volBtn" aria-label="Voice on or off">${Speak.enabled?ICON.vol:ICON.mute}</button>
       </div>
       <p class="tiny" id="hint" style="text-align:center;padding-top:8px"></p>
+      <p class="tiny" style="text-align:center;padding-top:4px"><button class="linkish" id="endBtn">End this mediation</button></p>
     </div>`;
 }
 
@@ -1653,9 +1667,12 @@ function VoiceRoom(n, cfg){
 
   vol.onclick=()=>{ Speak.enabled=!Speak.enabled; vol.innerHTML=Speak.enabled?ICON.vol:ICON.mute; };
   kbd.onclick=()=>{ typing=!typing; applyMode(); };
+  $("#endBtn",n).onclick=endMediation;
   function applyMode(){
     comp.hidden=!typing;
     mainBtn.style.display = typing?"none":"grid";
+    kbd.setAttribute("aria-pressed",String(typing));
+    kbd.setAttribute("aria-label",typing?"Talk instead":"Type instead");
     hint.textContent = typing ? "" : (Ears.supported()? "It listens while you talk, and answers when you pause." : "Voice input isn't available in this browser — type instead.");
     if(typing) setTimeout(()=>ta.focus(),100);
   }
@@ -1663,7 +1680,12 @@ function VoiceRoom(n, cfg){
   ta.addEventListener("input",fit);
   ta.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey&&innerWidth>700){e.preventDefault();submitText();} });
   send.onclick=submitText;
-  function submitText(){ const v=ta.value.trim(); if(!v||busy) return; ta.value=""; fit(); commit(v); }
+  let queued="";
+  function submitText(){
+    const v=ta.value.trim(); if(!v) return; ta.value=""; fit();
+    if(busy){ queued += (queued?"\n":"")+v; hint.textContent="Waiting for the mediator to finish — your note is queued."; return; }
+    commit(v);
+  }
 
   mainBtn.onclick=()=>{
     if(Ears.listening){ Ears.stop(true); return; }
@@ -1739,8 +1761,9 @@ function VoiceRoom(n, cfg){
     if(!alive()) return;
     if(my!==flow){ busy=false; Sky.setLevel(0); idle(); return; }   // a barge-in took over
     busy=false; Sky.setLevel(0);
-    if(finished){ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; cfg.onFinish(); return; }
+    if(finished){ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; comp.hidden=true; cfg.onFinish(); return; }
     idle();
+    if(queued){ const q=queued; queued=""; hint.textContent=""; setTimeout(()=>commit(q),350); return; }
     if(!typing && Ears.supported()) startListening();
   }
 
@@ -1899,7 +1922,7 @@ function Chamber(side){
   Sky.setMerge(0); Sky.setEnergy(.3); Sky.setFocus(1);
   const n=stage(voiceShell({
     title: side==="a"?"Room one":"Room two", back:true, side,
-    name:`${st.name}, speaking privately`, meta:`question ${Math.min(st.qCount+1,MAXQ)} of ${MAXQ}`
+    name:`${st.name}, speaking privately`, meta:`question ${st.qCount+1}`
   }));
 
   const room = VoiceRoom(n,{
@@ -1912,7 +1935,7 @@ function Chamber(side){
     onUser: t=>{ st.turns.push({role:"user",content:t}); save(); },
     onAI: (text,enough)=>{
       st.turns.push({role:"assistant",content:text}); st.qCount++; save();
-      room.setMeta(`question ${Math.min(st.qCount,MAXQ)} of ${MAXQ}`);
+      room.setMeta(`question ${Math.min(st.qCount+1,MAXQ)}`);
       room.setRail(Math.round(st.qCount/MAXQ*100));
       return enough || st.qCount>=MAXQ;
     },
@@ -1929,7 +1952,7 @@ function Chamber(side){
 
   room.setRail(Math.round(st.qCount/MAXQ*100));
   if(st.done){ $("#cap",n).textContent="This room is closed."; $("#vstate",n).textContent="done";
-    $("#mainBtn",n).style.display="none";
+    $("#mainBtn",n).style.display="none"; $("#kbd",n).style.display="none"; $("#composer",n).hidden=true;
     $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">Continue</button>`;
     $("#fin",n).onclick=()=>{ if(S.mode==="pair") go("hold"); else go(side==="a"?"seal":"doubting"); };
   } else room.speakNext();
@@ -2018,7 +2041,7 @@ function Doubting(){
       </div></div>`);
   const my=TOKEN;
   const all=n.querySelectorAll(".sstep"); let i=-1;
-  const tick=setInterval(()=>{ if(i>=0)all[i].classList.replace("on","done"); i++; if(i<all.length)all[i].classList.add("on"); },2200);
+  const tick=setInterval(()=>{ if(i>=0)all[i].classList.replace("on","done"); i++; if(i<all.length)all[i].classList.add("on"); },1400);
   all[0].classList.add("on");
 
   (async()=>{
@@ -2032,7 +2055,7 @@ function Doubting(){
     S.cross = { a: fix(cross?.a)||Local.doubts().a, b: fix(cross?.b)||Local.doubts().b };
     S.a.answers=[]; S.b.answers=[];
     clearInterval(tick); save();
-    await wait(700);
+    await wait(350);
     if(TOKEN!==my) return;
     go(S.mode==="pair" ? (S.seat==="b"?"doubtsB":"doubtsA") : "doubtsA");
   })();
@@ -2118,21 +2141,21 @@ function Synth(){
     </div>`);
   const my=TOKEN, all=n.querySelectorAll(".sstep"); let i=-1;
   const adv=()=>{ if(i>=0)all[i].classList.replace("on","done"); i++; if(i<all.length){all[i].classList.add("on"); Sky.setMerge(.2+i*.17);} };
-  adv(); const tick=setInterval(adv,2500);
+  adv(); const tick=setInterval(adv,1500);
 
   (async()=>{
     let rep;
     try{
       if(!AI.live()) throw {code:"offline"};
       rep = await AI.chat([{role:"user",content:synthesisPrompt()}],{json:true,tier:"complex"});
-    }catch(e){ await wait(1200); rep = Local.report(); }
+    }catch(e){ await wait(500); rep = Local.report(); }
     if(TOKEN!==my) return;
     clearInterval(tick);
     all.forEach(s=>{ s.classList.remove("on"); s.classList.add("done"); });
     S.report = normalise(rep); S.a.satisfied=null; S.b.satisfied=null;
     S.a.rebuttal=""; S.b.rebuttal=""; save();
     Sky.setMerge(1);
-    await wait(1400);
+    await wait(800);
     if(TOKEN===my) go("findings");
   })();
   return n;
@@ -2588,14 +2611,19 @@ function openSettings(){
   $("#wipe",body).onclick=()=>{ close(); reset(); };
 }
 
-function reset(){
+function wipeSession(msg){
+  if(!confirm(msg)) return false;
   TOKEN++; Speak.cancel(); Ears.stop(false); Net.stopListen();
+  if(S.room && Net.available()) Net.destroy();
   store.del("last");
   Object.assign(S,{stage:"open",room:null,seat:null,mode:"solo",a:blankSide(),b:blankSide(),
     relation:"",topic:"",report:null,cross:null,round:1,signed:{a:false,b:false},briefA:null});
   Sky.setMerge(0); Sky.setFocus(0);
   render();
+  return true;
 }
+function reset(){ wipeSession("Empty this mediation for good? Everyone returns to the opening screen."); }
+function endMediation(){ wipeSession("End this mediation? Both sides' rooms are wiped and everyone returns to the opening screen."); }
 
 /* ---------------------------------------------------------------
    24. BOOT
