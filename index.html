@@ -1285,9 +1285,9 @@ ${VOICE_STYLE}
 How you behave:
 - One question per message. Never two, never a list.
 - Under 45 words. Warm, plain, unhurried.
-- Let their answers steer you: each question must begin from one specific thing they just said — a phrase, an image, a moment of theirs. Never ask a question that could be asked of anyone with any argument.
-- Never repeat a question and never reuse a question's shape. If the story is already clear, dig once only where it is still unfinished, then let it go.
-- Keep the whole interview to 2 or 3 questions. As soon as you can represent ${me} fairly — often by question two — stop and close.
+- Let their answers steer you: each question MUST quote 3 to 5 exact words from their last message, in quotes, and build on that. Never ask a question that could be asked of anyone with any argument — no "how did that make you feel" style generic prompts, none.
+- Never repeat a question and never reuse a question's shape, even rephrased. If the only question you can think of is a variation of one already asked, do NOT ask it — close with <ENOUGH> instead.
+- Keep the whole interview to 2 or 3 questions. The moment you can represent ${me} fairly — often by question two — stop and close.
 - Never judge, never take a side, never say who is right, no advice yet.
 - If an answer is vague, ask about the one concrete moment instead.
 - If they vent or swear, take it without flinching and move on.
@@ -1308,6 +1308,13 @@ Reply with the summary only.`;
 
 const sideText = side => S[side].turns.map(t=>(t.role==="user"?S[side].name:"Listener")+": "+t.content).join("\n");
 const doubtText = side => (S.cross?.[side]||[]).map((q,i)=>`Q: ${q}\nA: ${S[side].answers?.[i]||"(not answered)"}`).join("\n");
+
+/* near-duplicate detection for interview questions: the model occasionally
+   re-asks the same thing in slightly different words, so exact matching is
+   not enough. Two questions sharing most content words count as the same. */
+const zzN = s=>String(s).toLowerCase().replace(/[^a-z0-9\u0d00-\u0d7f\u0900-\u097f]+/g," ").split(/\s+/).filter(w=>w.length>2);
+const zzSim = (a,b)=>{ const A=new Set(zzN(a)), B=new Set(zzN(b)); if(!A.size||!B.size) return 0; let h=0; A.forEach(w=>{ if(B.has(w)) h++; }); return h/Math.min(A.size,B.size); };
+const askedSoFar = side => S[side].turns.filter(t=>t.role==="assistant").map(t=>String(t.content).replace(/<ENOUGH>/g,"").trim()).filter(Boolean);
 
 /* the shared/summary flows skip respondTurns' per-message language injection,
    so each prompt carries its own lock that keeps the whole conclusion in the
@@ -1337,11 +1344,16 @@ ${sideText("a")}
 === ${S.b.name} said ===
 ${sideText("b")}
 
+=== Questions you already asked in the private rooms (do not repeat) ===
+${S.a.name}: ${askedSoFar("a").join(" / ")||"(none)"}
+${S.b.name}: ${askedSoFar("b").join(" / ")||"(none)"}
+
 Before you write anything they will read together, you get one round of clarification. Find the places where the two accounts genuinely don't line up, or where something important is missing, and ask each person about it.
 
 Rules:
 - Ask each person exactly 1 or 2 questions; only use 2 when something material is still genuinely unclear, never more than 2.
 - Each question under 28 words, spoken plainly out loud.
+- NEVER repeat anything from the "Questions you already asked" list, not even rephrased. Each clarifying question must open NEW ground only.
 - NEVER reveal what the other person said. Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
 - Ask about facts, sequence and intent, not about feelings you already have.
 ${LANG_LOCK()}
@@ -2053,13 +2065,27 @@ function Chamber(side){
   const room = VoiceRoom(n,{
     next: async (onText)=>{
       if(!AI.live()) throw {code:"offline"};
-      const told = st.turns.filter(t=>t.role==="assistant")
-        .map(t=>String(t.content).replace(/<ENOUGH>/g,"").trim()).filter(Boolean);
+      const told = askedSoFar(side);
       const antiRepeat = told.length
-        ? `\n\nQUESTIONS YOU ALREADY ASKED ${st.name} — NEVER ask these again, and never rephrase them:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nAsk about NEW ground only: choose a phrase from the last answer you have not explored yet. If nothing new is worth digging into, close with <ENOUGH> now.`
+        ? `\n\nQUESTIONS YOU ALREADY ASKED ${st.name} — NEVER ask these again, never rephrase them, never reuse their shape:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nAsk about NEW ground only: dig into one phrase from their last answer that you have not explored yet. If nothing new is worth digging into, close with <ENOUGH> now.`
         : "";
       const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat}, ...st.turns];
-      return await streamAI(turns,onText,"default");
+      const full = await streamAI(turns,onText,"default");
+      const clean = String(full).replace(/<ENOUGH>/g,"").trim();
+      if(!/<ENOUGH>/.test(full) && clean.length>10 && told.some(q=>zzSim(q,clean)>0.6)){
+        Speak.reset();                                        // drop the repeated draft
+        let closer="";
+        try{
+          if(AI.live()) closer = String(await AI.chat([{role:"user",content:
+            `The private interview ended naturally just now. Write ONE short warm closing sentence that means "I now have what I need, thank you" — absolutely no question — then the exact token <ENOUGH>. ${LANG_LOCK()} Under 22 words.`}],{tier:"quick"})).trim();
+        }catch(e){}
+        if(/<ENOUGH>/.test(closer)) return closer;
+        return (closer?closer+" ":"")+(spokenLang()==="Malayalam"
+          ? "എനിക്ക് വേണ്ടത് കിട്ടി, നന്ദി. <ENOUGH>"
+          : spokenLang()==="Hindi" ? "मुझे जो चाहिए मिल गया, धन्यवाद। <ENOUGH>"
+          : "I now have what I need, thank you. <ENOUGH>");
+      }
+      return full;
     },
     fallback: ()=>Local.next(side),
     addMore: async (text, onText)=>{
@@ -2074,10 +2100,9 @@ function Chamber(side){
       st.turns.push({role:"assistant",content:text}); st.qCount++; save();
       room.setMeta(`question ${Math.min(st.qCount+1,MAXQ)}`);
       room.setRail(Math.round(st.qCount/MAXQ*100));
-      const asked=st.turns.filter(t=>t.role==="assistant").map(t=>String(t.content).replace(/<ENOUGH>/g,"").trim());
+      const asked=askedSoFar(side);
       const last=asked[asked.length-1];
-      const zz=s=>String(s).toLowerCase().replace(/[^a-z\u0d00-\u0d7f\u0900-\u097f0-9]+/g,"");
-      const repeated = !!(last && zz(last).length>8 && asked.slice(0,-1).some(q=>zz(q)===zz(last)));
+      const repeated = !!(last && last.length>10 && asked.slice(0,-1).some(q=>zzSim(q,last)>0.6));
       return enough || st.qCount>=MAXQ || repeated;
     },
     onFinish: ()=>{
