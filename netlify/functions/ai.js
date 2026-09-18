@@ -276,6 +276,37 @@ async function googleSpeak(text, lang) {
   return Buffer.from(await r.arrayBuffer());
 }
 
+/* ---- world rooms: a two-device relay so pairing works with no Firebase.
+   Each 4-letter code holds both seats plus shared progress. Kept in the blob
+   store (same as setup) with an in-memory layer so warm instances serve
+   each other and rooms survive restarts. ---- */
+const roomMemo = new Map();
+const roomStore = () => { try { return getStore({ name: "oir-setup" }); } catch (e) { return null; } };
+async function roomGet(code) {
+  if (roomMemo.has(code)) return roomMemo.get(code);
+  const st = roomStore();
+  if (st) {
+    try {
+      const v = await st.get("room:" + code, { type: "json" });
+      if (v) { roomMemo.set(code, v); return v; }
+    } catch (e) {}
+  }
+  return null;
+}
+async function roomPut(code, body, merge) {
+  const prev = merge ? (await roomGet(code)) || {} : {};
+  const next = Object.assign({}, prev, body);
+  roomMemo.set(code, next);
+  const st = roomStore();
+  if (st) { try { await st.set("room:" + code, JSON.stringify(next)); } catch (e) {} }
+  return next;
+}
+async function roomDel(code) {
+  roomMemo.delete(code);
+  const st = roomStore();
+  if (st) { try { await st.delete("room:" + code); } catch (e) {} }
+}
+
 const audioResp = (buf) =>
   new Response(buf, {
     status: 200,
@@ -309,6 +340,29 @@ export default async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
+
+  /* two-device room relay: GET /ai?room=1&code=X · PUT/PATCH/DELETE too */
+  if (url.searchParams.get("room") === "1") {
+    const code = (url.searchParams.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+    if (!code) return json({ error: "missing code" }, 400);
+    const m = req.method.toUpperCase();
+    try {
+      if (m === "GET") {
+        const doc = await roomGet(code);
+        if (!doc) return new Response(null, { status: 404, headers: CORS });
+        return json(doc);
+      }
+      if (m === "PUT" || m === "PATCH") {
+        const body = await req.json().catch(() => null);
+        if (!body || typeof body !== "object") return json({ error: "bad body" }, 400);
+        const doc = await roomPut(code, body, m === "PATCH");
+        return json(doc);
+      }
+      if (m === "DELETE") { await roomDel(code); return new Response(null, { status: 204, headers: CORS }); }
+    } catch (e) { console.error("oir room failed:", e); return json({ error: "room error" }, 500); }
+    return json({ error: "unsupported method" }, 405);
+  }
+
   if (req.method === "GET") {
     /* one-click voice proof / test link: /ai?tts=1&lang=ml-IN&text=… */
     if (url.searchParams.get("tts")) return ttsResponse(url.searchParams.get("text") || "", url.searchParams.get("lang") || "");

@@ -1116,6 +1116,8 @@ const AI = {
   }
 };
 
+try { globalThis.AI = AI; } catch (e) {}
+
 /* ---------------------------------------------------------------
    6. NET — two-device rooms.
    Backends: Claude's own store when published, Firebase over plain
@@ -1124,7 +1126,7 @@ const AI = {
    so the two can talk at the same time without clobbering.
    --------------------------------------------------------------- */
 const Net = (()=>{
-  let kind="local", db=null, fbUrl=null, poll=null, listeners=[], lastSeen="";
+  let kind="local", db=null, fbUrl=null, roomUrl="", poll=null, listeners=[], lastSeen="";
   const SHARED = ["stage","relation","topic","report","cross","round","signed"];
 
   async function init(){
@@ -1137,10 +1139,11 @@ const Net = (()=>{
       }catch(e){}
     }
     if(fb){ fbUrl = String(fb).replace(/\/+$/,""); kind="firebase"; return kind; }
+    if(AI.proxyBase){ kind="proxy"; roomUrl = AI.proxyBase.replace(/\/+$/,""); return kind; }
     kind="local"; return kind;
   }
   const available = ()=> kind!=="local";
-  const label = ()=> kind==="db" ? "Claude sync" : kind==="firebase" ? "Firebase sync" : "This device only";
+  const label = ()=> kind==="db" ? "Claude sync" : kind==="firebase" ? "Firebase sync" : kind==="proxy" ? "Worldwide sync" : "This device only";
 
   const code = ()=>{ const A="ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<4;i++) s+=A[Math.floor(Math.random()*A.length)]; return s; };
 
@@ -1172,8 +1175,10 @@ const Net = (()=>{
       if(kind==="db"){
         const ref = db.doc("rooms/"+S.room);
         try{ await ref.update(body); }catch(e){ await ref.set(body); }
-      } else {
+      } else if(kind==="firebase"){
         await fetch(`${fbUrl}/rooms/${S.room}.json`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      } else {
+        await fetch(`${roomUrl}?room=1&code=${S.room}`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       }
     }catch(e){}
   }
@@ -1181,7 +1186,8 @@ const Net = (()=>{
     if(kind==="local" || !S.room) return null;
     try{
       if(kind==="db"){ const s = await db.doc("rooms/"+S.room).get(); return s.exists ? s.data() : null; }
-      const r = await fetch(`${fbUrl}/rooms/${S.room}.json`); return r.ok ? await r.json() : null;
+      const r = await fetch(kind==="firebase" ? `${fbUrl}/rooms/${S.room}.json` : `${roomUrl}?room=1&code=${S.room}`, {cache:"no-store"});
+      return r.ok ? await r.json() : null;
     }catch(e){ return null; }
   }
 
@@ -1214,7 +1220,8 @@ const Net = (()=>{
       if(kind!=="local"){
         try{
           if(kind==="db") await db.doc("rooms/"+S.room).set(payload());
-          else await fetch(`${fbUrl}/rooms/${S.room}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
+          else if(kind==="firebase") await fetch(`${fbUrl}/rooms/${S.room}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
+          else await fetch(`${roomUrl}?room=1&code=${S.room}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
         }catch(e){}
       }
       listen(); return S.room;
@@ -1235,7 +1242,8 @@ const Net = (()=>{
       if(kind!=="local" && r){
         try{
           if(kind==="db") await db.doc("rooms/"+r).delete();
-          else await fetch(`${fbUrl}/rooms/${r}.json`,{method:"DELETE"});
+          else if(kind==="firebase") await fetch(`${fbUrl}/rooms/${r}.json`,{method:"DELETE"});
+          else await fetch(`${roomUrl}?room=1&code=${r}`,{method:"DELETE"});
         }catch(e){}
       }
       return r;
