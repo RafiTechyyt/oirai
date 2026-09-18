@@ -451,7 +451,7 @@ const S = {
   flip:{ a:{done:false,script:null,answers:[],statement:""}, b:{done:false,script:null,answers:[],statement:""}, fail:false, stop:false },
   voice:true
 };
-const MAXQ = 4, MAXROUNDS = 3;
+const MAXQ = 3, MAXROUNDS = 3;
 const RELATIONS = ["Partners","Friends","Parent & child","Siblings","Housemates","Teammates","Something else"];
 
 const store = {
@@ -1283,20 +1283,21 @@ Never reveal, quote, paraphrase, confirm or deny any of it. If asked what ${othe
 ${VOICE_STYLE}
 
 How you behave:
-- One question per message. Never two, never a list.
-- Under 45 words. Warm, plain, unhurried.
-- Let their answers steer you: each question MUST quote 3 to 5 exact words from their last message, in quotes, and build on that. Never ask a question that could be asked of anyone with any argument — no "how did that make you feel" style generic prompts, none.
+- You are a listener who genuinely cares, not an interviewer. More than half of what you say should be reflecting, not asking.
+- Start by naming what you heard them feel ("That sounds...", "You're allowed to be angry about that") — short, human, with feeling. Never quiz them.
+- Ask a question ONLY when a real gap in their story needs filling, and then ask ONE, in your own words, tied to their last message. Never two, never a list.
+- A question MUST quote 3 to 5 exact words from their last message, in quotes, and build on that — so it can only belong to this person. No generic "how did that make you feel" questions, none.
 - Never repeat a question and never reuse a question's shape, even rephrased. If the only question you can think of is a variation of one already asked, do NOT ask it — close with <ENOUGH> instead.
-- Keep the whole interview to 2 or 3 questions. The moment you can represent ${me} fairly — often by question two — stop and close.
+- Keep the whole talk to 2 or 3 questions. The moment you can represent ${me} fairly — often by question two — stop and close warmly.
 - Never judge, never take a side, never say who is right, no advice yet.
 - If an answer is vague, ask about the one concrete moment instead.
-- If they vent or swear, take it without flinching and move on.
+- If they vent or swear, take it without flinching and let them get it out.
 - Speech-to-text garbles words. Never comment on typos or odd wording; infer their meaning.
 - Reply in the language they are speaking to you. Malayalam stays Malayalam, Hindi stays Hindi, English stays English.
 
 When you can represent ${me} fairly, say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Never pass question ${MAXQ}.
 
-Start now: one sentence that makes ${me} feel safe, then your first question.`;
+Start now: one warm line that lets ${me} know you're listening — name the feeling in the room without guessing their secret — then your first question.`;
 }
 
 const briefPrompt = (name,turns)=>`Summarise this person's account of a conflict in 130 words or less, neutrally, for a mediator's private notes. Keep their claims, their feelings, and what they want. Do not judge.
@@ -1442,14 +1443,14 @@ ${sideText("b")}
 ${S.a.name}: ${askedSoFar("a").join(" / ")||"(none)"}
 ${S.b.name}: ${askedSoFar("b").join(" / ")||"(none)"}
 
-Before you write anything they will read together, you get one round of clarification. Find the places where the two accounts genuinely don't line up, or where something important is missing, and ask each person about it.
+Before you write anything they will read together, you get one round to get the truth flat. Both accounts are in front of you — find where they genuinely don't line up, or where a key moment is missing from one telling. That gap is usually the real conflict. Ask each person about the gaps in THEIR OWN telling only.
 
 Rules:
 - Ask each person exactly 1 or 2 questions; only use 2 when something material is still genuinely unclear, never more than 2.
 - Each question under 28 words, spoken plainly out loud.
 - NEVER repeat anything from the "Questions you already asked" list, not even rephrased. Each clarifying question must open NEW ground only.
-- NEVER reveal what the other person said. Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
-- Ask about facts, sequence and intent, not about feelings you already have.
+- NEVER reveal what the other person said, and never say "they claim" or "they say". Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
+- Ask about facts, sequence and intent, not about feelings you already have. The question is meant to fill the spot where the two tellings diverge, so the version you write is one both can recognise.
 ${LANG_LOCK()}
 
 Reply with ONLY this JSON, no fence:
@@ -2076,11 +2077,14 @@ function Setup(){
     c.onclick=()=>{ $("#rels",n).querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed","false"));
       c.setAttribute("aria-pressed","true"); S.relation=c.dataset.r; check(); };
   });
-  const note=$("#pairNote",n);
+  const note=$("#pairNote",n), autoCode = (new URLSearchParams(location.search).get("room")||"").trim().toUpperCase();
   Net.init().then(()=>{
     if(!Net.available()){ $("#pairChip",n).disabled=true; $("#pairChip",n).style.opacity=".4";
       note.textContent="Two devices needs sync — add a Firebase URL in settings to turn it on."; }
-    else note.textContent = Net.label()+" is live. You'll get a 4-letter room code to share.";
+    else{
+      note.textContent = Net.label()+" is live. You'll get a 4-letter room code to share.";
+      if(autoCode && !S.seat){ $("#joinIn",n).value=autoCode; doJoin(); }
+    }
   });
   $("#modes",n).querySelectorAll(".chip").forEach(c=>{
     if(c.dataset.m===S.mode) c.setAttribute("aria-pressed","true");
@@ -2111,7 +2115,11 @@ function Pair(){
         <button class="btn a" id="createBtn">Create the room</button>
         <div id="codeBox" hidden><div class="code" id="codeTxt"></div>
           <p class="tiny" style="text-align:center;margin-top:8px">Give this to ${esc(S.b.name)}</p>
-          <button class="btn ghost sm" id="shareBtn" style="width:100%;margin-top:12px">Share the code</button>
+          <button class="btn ghost sm" id="shareBtn" style="width:100%;margin-top:12px">Share the code + link</button>
+          <div id="linkWrap" hidden style="margin-top:13px" class="stack sm">
+            <p class="tiny" style="text-align:center">Or send the link — it opens this same room</p>
+            <input class="input mono" id="linkTxt" readonly value="" style="font-size:12.5px">
+            <button class="btn ghost sm" id="copyLink" style="width:100%">Copy the link</button></div>
           <button class="btn bloom" id="goA" style="margin-top:10px">Open my room</button></div>
       </div></div>
       <div class="card"><div class="stack">
@@ -2125,22 +2133,33 @@ function Pair(){
   $("#createBtn",n).onclick=async()=>{
     const c = await Net.create();
     $("#codeTxt",n).textContent=c; $("#codeBox",n).hidden=false; $("#createBtn",n).style.display="none";
+    const root = (location.origin && location.origin!=="null") ? location.origin+location.pathname : "";
+    const link = root ? (root+(root.includes("?")?"&":"?")+"room="+c) : "";
+    if(link){ $("#linkTxt",n).value=link; $("#linkWrap",n).hidden=false; }
     save();
   };
   $("#goA",n).onclick=()=>go("chamberA");
+  $("#copyLink",n).onclick=async()=>{
+    const v=$("#linkTxt",n).value;
+    try{ await navigator.clipboard.writeText(v); }
+    catch(e){ $("#linkTxt",n).select(); try{ document.execCommand("copy"); }catch(e2){} }
+    $("#copyLink",n).textContent="Copied";
+  };
   $("#shareBtn",n).onclick=()=>{
-    const t=`Join our mediation. Code: ${S.room}\n${location.href}`;
+    const t=`Join our mediation. Code: ${S.room}\n${location.origin+location.pathname}?room=${S.room}`;
     if(navigator.share) navigator.share({title:"Obviously, I'm Right",text:t}).catch(()=>{});
     else { navigator.clipboard?.writeText(t); $("#shareBtn",n).textContent="Copied"; }
   };
-  $("#joinBtn",n).onclick=async()=>{
+  const doJoin=async ()=>{
     const c=$("#joinIn",n).value.trim().toUpperCase();
     if(c.length<4){ $("#joinMsg",n).textContent="That code is four letters."; return; }
     $("#joinMsg",n).textContent="Looking for the room…";
     const ok = await Net.join(c);
     if(!ok){ $("#joinMsg",n).textContent="No room with that code. Check it with them."; return; }
+    if(location.search) history.replaceState(null,"",location.pathname);
     go("chamberB");
   };
+  $("#joinBtn",n).onclick=doJoin;
   wireTop(n,()=>go("setup"));
   return n;
 }
@@ -2153,7 +2172,7 @@ function Chamber(side){
   Sky.setMerge(0); Sky.setEnergy(.3); Sky.setFocus(1);
   const n=stage(voiceShell({
     title: side==="a"?"Room one":"Room two", back:true, side,
-    name:`${st.name}, speaking privately`, meta:`question ${st.qCount+1}`
+    name:`${st.name}, speaking privately`, meta:`listening ${st.qCount+1}/${MAXQ}`
   }));
 
   const room = VoiceRoom(n,{
@@ -2204,7 +2223,7 @@ function Chamber(side){
     onUser: t=>{ st.turns.push({role:"user",content:t}); save(); },
     onAI: (text,enough)=>{
       st.turns.push({role:"assistant",content:text}); st.qCount++; save();
-      room.setMeta(`question ${Math.min(st.qCount+1,MAXQ)}`);
+      room.setMeta(`listening ${Math.min(st.qCount+1,MAXQ)}/${MAXQ}`);
       room.setRail(Math.round(st.qCount/MAXQ*100));
       const asked=askedSoFar(side);
       const last=asked[asked.length-1];
@@ -2512,10 +2531,7 @@ async function finaliseReport(rep){
    --------------------------------------------------------------- */
 function Findings(){
   Sky.setMerge(1); Sky.setEnergy(.5); Sky.setFocus(0);
-  const r=S.report, A=S.a.name, B=S.b.name, C=2*Math.PI*48;
-  const uw=s=>words(S[s].turns.filter(t=>t.role==="user").map(t=>t.content).join(" "))+words((S[s].answers||[]).join(" "));
-  const wa=uw("a"), wb=uw("b"), qa=S.a.qCount+((S.a.answers||[]).length), qb=S.b.qCount+((S.b.answers||[]).length);
-  const bal=Math.round(wa/Math.max(wa+wb,1)*100);
+  const r=S.report, A=S.a.name, B=S.b.name;
   const tags=(x,c)=>x.map(v=>`<span class="tag ${c}">${esc(v)}</span>`).join("");
   const mySeat = S.seat;
 
@@ -2523,7 +2539,7 @@ function Findings(){
     ${topbar("Both sides",false)}
     <div class="findings">
       <div class="stack" style="padding-top:2px">
-        <p class="tiny">Round ${S.round} · what the two of you said, read together</p>
+        <p class="tiny">Round ${S.round} · the mediator's read of both your stories</p>
         <h1 class="headline">${esc(r.headline)}</h1>
         <button class="btn ghost sm" id="playAll" style="width:auto;justify-self:start">${ICON.vol} Hear it from the mediator</button>
         <p class="lede" id="spokenTxt" hidden style="font-size:15.5px">${esc(r.spoken)}</p>
@@ -2570,30 +2586,6 @@ function Findings(){
           <div class="card"><div class="side-label a"><span class="dot a"></span>${esc(A)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.a)}</p></div>
           <div class="card"><div class="side-label b"><span class="dot b"></span>${esc(B)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.b)}</p></div></div></div>
 
-      <div class="sect"><h3 class="h3">How each of you added to it</h3>
-        <p class="lede">Not a guilt score. How much of the misunderstanding each of you was carrying — and both of you were carrying some.</p>
-        <div class="card"><div class="arcs">
-          <div class="arc a"><div class="arcbox"><svg viewBox="0 0 110 110"><circle class="ring-bg" cx="55" cy="55" r="48"/>
-            <circle class="ring" id="ringA" cx="55" cy="55" r="48" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}"/></svg>
-            <span class="val num" style="color:var(--ember)">${r.contribution.a.pct}%</span></div><span class="cap">${esc(A)}</span></div>
-          <div class="arc b"><div class="arcbox"><svg viewBox="0 0 110 110"><circle class="ring-bg" cx="55" cy="55" r="48"/>
-            <circle class="ring" id="ringB" cx="55" cy="55" r="48" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}"/></svg>
-            <span class="val num" style="color:var(--iris)">${r.contribution.b.pct}%</span></div><span class="cap">${esc(B)}</span></div>
-        </div>
-        <div class="stack sm" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--hair)">
-          <p style="font-size:14.5px;line-height:1.55"><b style="color:var(--ember)">${esc(A)}</b> — ${esc(r.contribution.a.note)}</p>
-          <p style="font-size:14.5px;line-height:1.55"><b style="color:var(--iris)">${esc(B)}</b> — ${esc(r.contribution.b.note)}</p></div></div></div>
-
-      <div class="sect"><h3 class="h3">Proof this was even-handed</h3>
-        <p class="lede">A mutual friend can't show you this. Here is exactly how much of each of you was heard.</p>
-        <div class="card"><div class="ledger">
-          <div class="lrow"><span class="lk">Questions asked</span><span class="lv a num">${qa}</span><span class="lv b num">${qb}</span></div>
-          <div class="lrow"><span class="lk">Words heard</span><span class="lv a num">${wa}</span><span class="lv b num">${wb}</span></div>
-          <div class="lrow"><span class="lk">Read the other's raw words</span><span class="lv a">no</span><span class="lv b">no</span></div>
-          <div class="lrow"><span class="lk">Clarifying questions</span><span class="lv a num">${(S.cross?.a||[]).length}</span><span class="lv b num">${(S.cross?.b||[]).length}</span></div>
-        </div><div class="balance"><i id="balpin" style="left:50%"></i></div>
-        <p class="tiny" style="margin-top:9px">The marker sits where the talking landed. Dead centre is a perfectly even split.</p></div></div>
-
       <div class="sect"><h3 class="h3">The way out</h3>
         <div class="stack">${r.pact.map((p,i)=>`<div class="pactitem"><span class="pactnum">${i+1}</span><span style="font-size:14.5px;line-height:1.55">${esc(p)}</span></div>`).join("")}</div></div>
 
@@ -2625,13 +2617,6 @@ function Findings(){
           <button class="linkish" id="restart" style="text-align:center">Start a different mediation</button>
         </div></div>
     </div>`);
-
-  requestAnimationFrame(()=>setTimeout(()=>{
-    const ra=$("#ringA",n), rb=$("#ringB",n);
-    if(ra) ra.style.strokeDashoffset=(C*(1-r.contribution.a.pct/100)).toFixed(1);
-    if(rb) rb.style.strokeDashoffset=(C*(1-r.contribution.b.pct/100)).toFixed(1);
-    const bp=$("#balpin",n); if(bp) bp.style.left=bal+"%";
-  },220));
 
   const play=$("#playAll",n), sp=$("#spokenTxt",n);
   play.onclick=()=>{
@@ -3118,7 +3103,6 @@ function summaryText(){
   r.truthMap.forEach(x=>{L.push(`  [${x.kind}] ${x.what}`);L.push(`      ${A}: ${x.a}`);L.push(`      ${B}: ${x.b}`);});
   L.push("","WHAT YOU EACH MEANT",`  ${A}: ${r.bridge.a.meant}`,`  ${B}: ${r.bridge.b.meant}`);
   L.push("","WHAT WENT UNSAID",`  ${A}: ${r.unsaid.a}`,`  ${B}: ${r.unsaid.b}`);
-  L.push("","HOW EACH ADDED TO IT",`  ${A} (${r.contribution.a.pct}%): ${r.contribution.a.note}`,`  ${B} (${r.contribution.b.pct}%): ${r.contribution.b.note}`);
   L.push("","THE AGREEMENT"); r.pact.forEach((p,i)=>L.push(`  ${i+1}. ${p}`));
   L.push("","FIRST WORDS",`  ${A}: "${r.apology.a}"`,`  ${B}: "${r.apology.b}"`);
   const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
@@ -3307,10 +3291,15 @@ function endMediation(){ wipeSession("End this mediation? Both sides' rooms are 
   render();
   await AI.init();            // also fetches the host config the owner set
   await Net.init();
+  const bootRoom = new URLSearchParams(location.search).get("room") || "";
   const prev = store.get("last", null);
   if(prev && prev.stage && prev.stage!=="open" && prev.a?.name){
     Object.assign(S, prev);
     if(S.room && Net.available()) Net.listen();
+  }
+  if(bootRoom && S.room!==bootRoom){      // a fresh link means: someone else opened a room for you
+    Net.stopListen();
+    S.mode="pair"; S.stage="pair"; S.room=bootRoom; S.seat=null;
     render();
   }
   addEventListener("beforeunload",()=>{ try{ Speak.cancel(); }catch(e){} });
