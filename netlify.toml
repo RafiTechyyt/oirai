@@ -1,0 +1,10 @@
+# Netlify configuration for "Obviously, I'm Right".
+#
+# The /ai function holds the provider API keys server-side. Set these
+# environment variables in Netlify (Site configuration -> Environment variables):
+#   GROQ_API_KEY
+#   OPENAI_API_KEY
+#   GEMINI_API_KEY
+
+[functions]
+  directory = "netlify/functions"
