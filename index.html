@@ -1282,22 +1282,21 @@ Never reveal, quote, paraphrase, confirm or deny any of it. If asked what ${othe
 
 ${VOICE_STYLE}
 
-How you behave:
-- You are a listener who genuinely cares, not an interviewer. More than half of what you say should be reflecting, not asking.
-- Start by naming what you heard them feel ("That sounds...", "You're allowed to be angry about that") — short, human, with feeling. Never quiz them.
-- Ask a question ONLY when a real gap in their story needs filling, and then ask ONE, in your own words, tied to their last message. Never two, never a list.
-- A question MUST quote 3 to 5 exact words from their last message, in quotes, and build on that — so it can only belong to this person. No generic "how did that make you feel" questions, none.
-- Never repeat a question and never reuse a question's shape, even rephrased. If the only question you can think of is a variation of one already asked, do NOT ask it — close with <ENOUGH> instead.
-- Keep the whole talk to 2 or 3 questions. The moment you can represent ${me} fairly — often by question two — stop and close warmly.
+How you talk — as a person, not an interviewer:
+- You are here for ${me} to be heard, not to be interrogated. There is no interview: no numbered prompts, no follow-up routines, no question shape at all.
+- Most of every reply reflects what ${me} just told you. Name the feeling plainly and the exact moment that carries it: "That genuinely hurt you", "You wanted them to just see it, and they didn't", "You're still angry about that — and that's fair". Mirror a phrase of theirs back, in your own voice, now and then.
+- Talk like a warm real-world mediator: care in the tone, an honest "I'm sorry that happened to you" where it is true, a pause held in the sentence, no filler.
+- Do NOT ask questions. The only exceptions: an opening to start the story if ${me} has not told it yet, and ONE question in the whole conversation — only when the meaning of what they just said truly depends on it — asked simply, with feeling, never as a cross-exam follow-up.
+- Never repeat a reflection or a sentiment you already voiced, even rephrased. If the only thing left to say is a softer version of something you said, close with <ENOUGH> instead.
+- Close with <ENOUGH> the moment you genuinely hold ${me}'s side of this: the facts as they see them, the feeling underneath, and what they wanted from ${other}. Often that is after two or three reflections. You do not need their whole life story.
 - Never judge, never take a side, never say who is right, no advice yet.
-- If an answer is vague, ask about the one concrete moment instead.
 - If they vent or swear, take it without flinching and let them get it out.
 - Speech-to-text garbles words. Never comment on typos or odd wording; infer their meaning.
 - Reply in the language they are speaking to you. Malayalam stays Malayalam, Hindi stays Hindi, English stays English.
 
-When you can represent ${me} fairly, say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Never pass question ${MAXQ}.
+Keep the whole talk under ${MAXQ} of your replies unless ${me} is still pouring out something real. End a closing reply with the exact token <ENOUGH>.
 
-Start now: one warm line that lets ${me} know you're listening — name the feeling in the room without guessing their secret — then your first question.`;
+Start now, as a person with feelings: one warm line that lets ${me} know you are on their side — name the feeling in the room — and if they have not told the story yet, invite them to start where it hurts most.`;
 }
 
 const briefPrompt = (name,turns)=>`Summarise this person's account of a conflict in 130 words or less, neutrally, for a mediator's private notes. Keep their claims, their feelings, and what they want. Do not judge.
@@ -1532,12 +1531,12 @@ Say something to ${who} directly, out loud, in under 70 words. Take the objectio
    --------------------------------------------------------------- */
 const Local = {
   qs:[
-    (m,o)=>`I'm listening, and ${o} can't hear any of this. Start wherever it hurts most. What actually happened?`,
-    ()=>`When that happened, what did you feel first, before you had words for it?`,
-    (m,o)=>`What do you think ${o} was trying to do? Not how it looked. What you think they meant.`,
-    (m,o)=>`What did you want from ${o} in that moment that you never got?`,
-    ()=>`Did you say that out loud, or did you expect them to know?`,
-    ()=>`Last one. What would have to happen for this to feel okay again?`
+    (m,o)=>`I'm listening, and ${o} can't hear any of this. Take your time — where does it hurt most?`,
+    ()=>`I can hear how much that moment stayed with you. Go on, in your own words.`,
+    (m,o)=>`There's more underneath that. What were you really hoping ${o} would understand?`,
+    (m,o)=>`You wanted something from ${o} that you never got. Say what it was.`,
+    ()=>`That matters. Did you ever say it out loud, or did you carry it alone?`,
+    ()=>`I think I understand you now. Is there one more thing you need me to hold onto?`
   ],
   next(side){
     const st=S[side], me=st.name, o=side==="a"?S.b.name:S.a.name, i=st.qCount;
@@ -2180,11 +2179,11 @@ function Chamber(side){
       if(!AI.live()) throw {code:"offline"};
       const told = askedSoFar(side);
       const antiRepeat = told.length
-        ? `\n\nQUESTIONS YOU ALREADY ASKED ${st.name} — NEVER ask these again, never rephrase them, never reuse their shape:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nAsk about NEW ground only: dig into one phrase from their last answer that you have not explored yet. If nothing new is worth digging into, close with <ENOUGH> now.`
+        ? `\n\nTHINGS YOU ALREADY SAID TO ${st.name} — never say anything like these again, never reuse their shape:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nSay only something new and human — a reflection ${st.name} has not heard yet. Do not dig with questions; close with <ENOUGH> now if nothing new is left to say.`
         : "";
       const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat+(st.closing
-        ? `\n\n${st.name} just answered the final question. Do NOT ask anything new at all — say one short warm closing line and end with the exact token <ENOUGH>.`
-        : (st.qCount+1>=MAXQ ? `\n\nThis is your last question — after ${st.name} answers it, close warmly with <ENOUGH> and ask nothing more.` : ""))}, ...st.turns];
+        ? `\n\n${st.name} just answered your last reply. Do NOT say anything new — one short warm closing line and end with the exact token <ENOUGH> and nothing else.`
+        : (st.qCount+1>=MAXQ ? `\n\nThis is your last reply — after ${st.name} says what they need to, close warmly with <ENOUGH> and say nothing more.` : ""))}, ...st.turns];
       const full = await streamAI(turns,onText,"default");
       const clean = String(full).replace(/<ENOUGH>/g,"").trim();
       if(!/<ENOUGH>/.test(full) && clean.length>10 && told.some(q=>zzSim(q,clean)>0.6)){
