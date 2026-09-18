@@ -5,13 +5,10 @@
 // browsers.
 //
 //   GET  /.netlify/functions/ai?ping=1  ->  {ok:true}  (health check, used by the client)
-//   POST /.netlify/functions/ai
-//        body: {provider:"groq"|"openai"|"gemini", turns:[{role,content}], json:bool, tier:"quick"|"default"|"complex"}
-//        -> streams an OpenAI-style SSE response (data: {"choices":[{"delta":{"content":"..."}}]})
-//
-// Environment variables to set in Netlify (Site configuration -> Environment variables):
-//   GROQ_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   (fallback bootstrap; the admin panel overrides these)
+//   POST /.netlify/functions/ai?tts=1
+//        body: {text, lang:"ml-IN"|"hi-IN"}    ->  audio/mpeg (cloud voice, cached)
 import { getStore } from "@netlify/blobs";
+import { createHash } from "node:crypto";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -100,16 +97,97 @@ function delta(j) {
   return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
 }
 
+/* ---- cloud text-to-speech so Malayalam/Hindi replies are actually spoken ----
+   Azure Speech is used when AZURE_SPEECH_KEY + AZURE_SPEECH_REGION are set;
+   otherwise it falls back to the free Google Translate voice for the same
+   language. Audio is cached in the blob store so repeats cost nothing. */
+const AZURE_VOICES = {
+  "ml-IN": ["ml-IN-SobhanaNeural", "ml-IN-MidhunNeural"],
+  "hi-IN": ["hi-IN-MadhurNeural", "hi-IN-SwaraNeural", "hi-IN-AaravNeural"]
+};
+const GT_LANG = { "ml-IN": "ml", "hi-IN": "hi" };
+const escXml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+async function azureSpeak(text, lang) {
+  const region = process.env.AZURE_SPEECH_REGION, key = process.env.AZURE_SPEECH_KEY;
+  const voices = AZURE_VOICES[lang];
+  if (!region || !key || !voices || !voices.length) return null;
+  const ssml = `<speak version='1.0' xml:lang='${lang}'><voice name='${voices[0]}'>${escXml(text)}</voice></speak>`;
+  const r = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1/text-to-speech`, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+      "User-Agent": "oir-ai-proxy",
+      "X-Search-AppId": "00000000000000000000000000000000",
+      "X-Search-ClientID": "00000000000000000000000000000000"
+    },
+    body: ssml
+  });
+  if (!r.ok) return null;
+  return Buffer.from(await r.arrayBuffer());
+}
+
+async function googleSpeak(text, lang) {
+  const tl = GT_LANG[lang];
+  if (!tl) return null;
+  const q = encodeURIComponent(text.slice(0, 150));
+  const r = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${q}`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "Referer": "https://translate.google.com/"
+    }
+  });
+  if (!r.ok) return null;
+  return Buffer.from(await r.arrayBuffer());
+}
+
+const audioResp = (buf) =>
+  new Response(buf, {
+    status: 200,
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "public, max-age=86400",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Content-Type, Accept"
+    }
+  });
+
 export default async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   if (req.method === "GET") return json({ ok: true, name: "oir-ai-proxy" });
 
+  const url = new URL(req.url);
   const body = await req.json().catch(() => null);
-  const provider = body?.provider;
-  const turns = body?.turns;
-  const wantJson = !!body?.json;
-  const tier = body?.tier || "default";
+  if (!body || typeof body !== "object") return json({ error: "body must be JSON" }, 400);
+
+  /* cloud voice for Malayalam/Hindi (and any later language) */
+  if (url.searchParams.get("tts")) {
+    const text = String(body.text || "").trim();
+    const lang = String(body.lang || "");
+    if (!text) return json({ error: "text is required" }, 400);
+    if (!AZURE_VOICES[lang] && !GT_LANG[lang]) return json({ error: `no cloud voice for ${lang}` }, 400);
+    const hash = createHash("sha1").update(lang + "|" + text).digest("hex");
+    try {
+      const store = getStore({ name: "oir-setup", consistency: "strong" });
+      const cached = await store.get("tts:" + hash);
+      if (cached) return audioResp(await cached.arrayBuffer());
+    } catch (e) {}
+    const audio = (await azureSpeak(text, lang)) || (await googleSpeak(text, lang));
+    if (!audio) return json({ error: "TTS backend unavailable — set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION for reliable cloud voices" }, 502);
+    try {
+      const store = getStore({ name: "oir-setup", consistency: "strong" });
+      await store.set("tts:" + hash, new Blob([audio]));
+    } catch (e) {}
+    return audioResp(audio);
+  }
+
+  const provider = body.provider;
+  const turns = body.turns;
+  const wantJson = !!body.json;
+  const tier = body.tier || "default";
 
   const conf = PROVIDERS[provider];
   if (!conf) return json({ error: `unknown provider: ${provider}` }, 400);

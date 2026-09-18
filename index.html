@@ -574,18 +574,49 @@ const Speak = (()=>{
     levelTimer = setInterval(()=>Sky.setLevel(0.25+Math.random()*0.55), 110);
   }
 
+  /* Malayalam/Hindi are voiced from the cloud endpoint (?tts=1) so they are
+     actually spoken even when the device has no native voice installed. */
+  const selectedLang = ()=>{ const l=store.get("lang", null)||store.get("accent", null)||"auto"; return l==="auto"?"":String(l); };
+  const cloudLang = (l)=>/^(ml|hi)[-_]?/i.test(l||"") && !!(globalThis.AI && AI.serverUrl);
+  const aiUrl = ()=>{ const c=globalThis.AI&&AI.configUrl; return c ? c.replace(/\/config$/,"/ai") : ((globalThis.AI&&AI.proxyBase)||"/.netlify/functions/ai"); };
+  function speakLocal(text, lang){
+    return new Promise((res)=>{
+      if(!synth){ res(); return; }
+      const u=new SpeechSynthesisUtterance(text);
+      if(voice) u.voice=voice;
+      u.lang = voice?.lang || speechLang();
+      u.rate=1.02; u.pitch=1.0; u.volume=1;
+      let done=false;
+      const fin=()=>{ if(done) return; done=true; res(); };
+      u.onend=u.onerror=fin;
+      try{ synth.speak(u); }catch(e){ fin(); }
+    });
+  }
+  async function speakCloud(text, lang){
+    const segs = text.match(/.{1,120}/gs) || [text];
+    try{
+      for(const seg of segs){
+        const r = await fetch(aiUrl()+"?tts=1",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:seg, lang})});
+        if(!r.ok) throw new Error("tts "+r.status);
+        const blob = await r.blob();
+        const au = new Audio(URL.createObjectURL(blob));
+        try{ await au.play(); }catch(e){ throw e; }
+        await new Promise((res,rej)=>{ au.onended=res; au.onerror=()=>rej(new Error("playback")); });
+        try{ URL.revokeObjectURL(au.src); }catch(e){}
+      }
+    }catch(e){
+      return speakLocal(text, lang); /* device voice as a fallback */
+    }
+  }
   function drain(){
-    if(!synth || !enabled || speaking) return;
+    if(!enabled || speaking) return;
     const next = queue.shift();
     if(next===undefined){ speaking=false; fakeLevel(false); onDone&&onDone(); onDone=null; return; }
     if(!next.trim()) return drain();
     speaking=true; fakeLevel(true);
-    const u = new SpeechSynthesisUtterance(next);
-    if(voice) u.voice=voice;
-    u.lang = voice?.lang || speechLang();
-    u.rate = 1.02; u.pitch = 1.0; u.volume = 1;
-    u.onend = u.onerror = ()=>{ speaking=false; drain(); };
-    try{ synth.speak(u); }catch(e){ speaking=false; drain(); }
+    const lang = selectedLang();
+    const play = cloudLang(lang) ? speakCloud(next, lang) : speakLocal(next, lang);
+    Promise.resolve(play).finally(()=>{ speaking=false; drain(); });
   }
 
   return {
@@ -1444,7 +1475,7 @@ function Admin(){
             <option value="ml-IN">മലയാളം — Malayalam</option>
             <option value="hi-IN">हिन्दी — Hindi</option>
           </select>
-          <p class="tiny">Everyone's listening, voice and replies default to this. Malayalam/Hindi speaking needs a matching voice on the device for best quality.</p></div>
+          <p class="tiny">Everyone's listening, voice and replies default to this. Malayalam and Hindi replies are voiced by the server, so visitors hear them with no extra setup.</p></div>
         <div class="field"><span>Firebase Realtime Database URL</span>
           <input class="input" id="admFb" placeholder="https://your-project-default-rtdb.firebaseio.com">
           <p class="tiny">Turns on two-device rooms for everyone. Leave empty for single-device use.</p></div>
@@ -2461,7 +2492,7 @@ function openSettings(){
         <option value="ml-IN">മലയാളം — Malayalam</option>
         <option value="hi-IN">हिन्दी — Hindi</option>
       </select>
-      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. Selecting Malayalam or Hindi forces replies in that language; in auto mode, the mediator detects it from what you type. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
+      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. Selecting Malayalam or Hindi forces replies in that language; in auto mode, the mediator detects it from what you type. Malayalam and Hindi replies are spoken with a cloud voice when the app is hosted, so no device voice is needed. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
     <button class="btn ghost" id="saveCfg">Save and reload</button>
     <button class="btn ghost" id="testBtn">Test the connection</button>
     <div class="notice" id="testOut" hidden></div>
@@ -2480,7 +2511,8 @@ function openSettings(){
     store.set("lang", v); store.del("accent");
     AI.lang=v;
     Speak.pick();
-    if(Speak.enabled && Speak.ready()){
+    const cloudOk = /^(ml|hi)/i.test(v) && (globalThis.AI && AI.serverUrl);
+    if(Speak.enabled && (cloudOk || Speak.ready())){
       const sample = /^ml/i.test(v) ? "എനിക്ക് മലയാളത്തിൽ ചിന്തിക്കാനും പറയാനും കഴിയും."
         : /^hi/i.test(v) ? "मैं हिंदी में सोच और बोल सकती हूँ।"
         : "I can listen and reply in this language.";

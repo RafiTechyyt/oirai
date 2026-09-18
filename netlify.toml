@@ -7,6 +7,9 @@
 #   OPENAI_API_KEY     (optional fallback)
 #   GEMINI_API_KEY     (optional fallback)
 #   ADMIN_TOKEN        (REQUIRED — the host panel password for /config)
+#   AZURE_SPEECH_KEY   (optional — cloud Malayalam/Hindi voices for /ai?tts=1)
+#   AZURE_SPEECH_REGION (optional — e.g. "eastus"; without it, a free fallback
+#                       voice is tried and the browser voice is the last resort)
 
 [functions]
   directory = "netlify/functions"
