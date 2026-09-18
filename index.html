@@ -744,7 +744,7 @@ const AI = {
   keys:{groq:"", openai:"", gemini:""},
 
   async init(){
-    this.proxyBase = store.get("proxy", null) || "/.netlify/functions/ai";
+    this.proxyBase = store.get("proxy", null) || ((typeof location!=="undefined" && location.protocol==="file:") ? "https://oirai.netlify.app/.netlify/functions/ai" : "/.netlify/functions/ai");
     this.serverUrl = null;
     this.lastLang = "";
     this.keys.groq   = store.get("key_groq",   "");
@@ -832,7 +832,11 @@ const AI = {
       ["groq","openai","gemini"].forEach(p=>{ if(p!==this.provider) order.push({backend:"server", provider:p, url:prox}); });
     }
     ["groq","openai","gemini"].forEach(p=>{ if(this.keys[p]) order.push({backend:p, via:"direct"}); });
-    if(!order.length) throw {code:"no_backend", message:"No mediator configured. Add an API key in settings."};
+    if(!order.length){
+      this.lastError = {code:"no_backend", backend:this.mode,
+        message:"No mediator configured — add an API key in settings, or open the hosted site at https://oirai.netlify.app."};
+      throw this.lastError;
+    }
     let last=null;
     for(const o of order){
       try{
