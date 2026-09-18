@@ -448,6 +448,7 @@ const S = {
   relation:"", topic:"",
   report:null, cross:null, round:1,
   signed:{a:false,b:false},
+  flip:{ a:{done:false,script:null,answers:[],statement:""}, b:{done:false,script:null,answers:[],statement:""}, fail:false, stop:false },
   voice:true
 };
 const MAXQ = 4, MAXROUNDS = 3;
@@ -1491,7 +1492,7 @@ function render(){
     open:Open, setup:Setup, pair:Pair, hold:Hold,
     chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
     doubting:Doubting, doubtsA:()=>Doubts("a"), doubtsB:()=>Doubts("b"), sealD:SealD, hold2:Hold2,
-    synth:Synth, findings:Findings, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
+    synth:Synth, findings:Findings, flip:Flip, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
     admin:Admin
   };
   app.innerHTML="";
@@ -2493,7 +2494,7 @@ function Findings(){
   });
   sync();
   proceed.onclick=()=>{
-    if(S.a.satisfied && S.b.satisfied) return go("sealed");
+    if(S.a.satisfied && S.b.satisfied) return go("flip");
     if(S.round>=MAXROUNDS){ alert("You've been round this three times. Take a break and come back to it — that's a real answer too."); return go("sealed"); }
     go("rebuttal");
   };
@@ -2577,16 +2578,329 @@ function Persuade(){
 }
 
 /* ---------------------------------------------------------------
-   22. SEALED
+/* ---------------------------------------------------------------
+   22. THE PERSPECTIVE FLIP
+   After both accept the summary, each person briefly experiences
+   the dispute through the other person's eyes. Shared-screen — one
+   flip runs, then the other. Everything stays in the room's
+   language, self-claims get reframed as on-trust assumptions
+   (the "I like chocolate" pattern), and the exercise stands down
+   cleanly if the conflict reads as a safety situation.
+   --------------------------------------------------------------- */
+function flipPrompt(who){
+  const o = who==="a"?"b":"a";
+  const A=S.a.name, B=S.b.name, T=S.topic||"this";
+  const r=S.report||{};
+  const R = {headline:r.headline||"", commonGround:r.commonGround||[], truthMap:r.truthMap||[], bridge:r.bridge||{}, contribution:r.contribution||{}};
+  const me = who==="a"?A:B, them = who==="a"?B:A;
+  return `You are the "Perspective Flip" module inside "Obviously, I'm Right", a two-sided conflict mediator. You are building a guided perspective-flip exercise FOR ${me}, the ${who==="a"?"first":"second"} person, to help them temporarily understand the emotional perspective, assumptions, motivations and inner logic of ${them}, the ${o==="a"?"first":"second"} person.
+
+Hard rules:
+- Never decide who is right. Never claim to know exactly what ${them} felt or thought.
+- Separate clearly what ${them} actually STATED (below) from what you only INFER.
+- Never invent events, intentions, memories or emotions. Never push anyone to accept blame. Never ridicule, shame or attack. Stay neutral, warm and safe.
+- Do not reveal private information ${me} asked to keep confidential.
+- The whole exercise must read smoothly in the exact language these two actually spoke.
+
+=== SAFETY STOP ===
+If either side's statements describe a threat of violence, physical abuse, coercion, or endangering of a person or child — do NOT build a flip. Reply with exactly the five words SAFETY_STOP REQUIRED and nothing else.
+
+=== WHAT TO BUILD FROM ===
+Relationship: ${S.relation||"two people"} · About: "${T}" · Round ${S.round}.
+
+--- What ${me} told the mediator privately ---
+${sideText(who)}
+
+--- What ${them} told the mediator privately ---
+${sideText(o)}
+
+--- The mediator's analysis so far ---
+${JSON.stringify(R)}
+
+=== THE ASSUMPTION REFRAME (this is the heart of the exercise) ===
+When someone says something positive, neutral or self-descriptive about themselves — "I like chocolate" is the classic case — that is THEIR OWN CLAIM about themselves. The other person can never fully verify it; from that other side it is fundamentally a belief held on trust.
+
+Make this visible in the exercise, in both directions:
+For ${me}: "${me}, you have been treating it as fact that ${them} likes [thing]. That is ${them}'s claim about themselves, which you can only accept on trust — and you may be building judgments on it without noticing the trust involved."
+For ${them} (inside the bridge): "${them} has been acting on a self-belief of ${me}'s the same way."
+Use the real self-claims these two actually made where they exist; the chocolate line is just the pattern to follow.
+
+=== OUTPUT: ONLY this JSON, no fence ===
+{
+ "intro":"2-3 sentences stating where ${them} is coming from. Documented points first; clearly mark anything inferred.",
+ "emotions":[{"event":"one concrete event","theirRead":"how ${them} interpreted it","theirFeeling":"what they felt","theirAction":"what they did"}, add 2-3],
+ "assumptions":["1-3, each reframing a self-claim or positive of one side into the on-trust assumption it really is, exactly like the chocolate example"],
+ "roleplay":{"setup":"You are ${them} now. Put yourself in their actual situation, using the events above. 2-3 sentences.","question":"What would you do or say right now?"},
+ "roleplayNote":"One short sentence comparing what ${me} would probably do with what ${them} actually reported doing or saying.",
+ "gap":{"youThought":"what ${me} believed, short and exact","theySaid":"what ${them} actually said about that point, quoted if possible","misunderstanding":"the single misunderstanding in one plain sentence"},
+ "bridge":{"aboutThem":"What ${me} may have misunderstood about ${them}, 1-2 sentences","aboutYou":"What ${them} may have misunderstood about ${me}, 1-2 sentences","bothNow":"What both can understand now, 1-2 sentences"},
+ "resolution":{"q1":"One thing ${me} would like ${them} to understand about them","q2":"One thing ${me} is willing to change","statement":"Joint understanding: one or two warm sentences, naming both people and that both cared but read the same moments differently"}
+}
+${LANG_LOCK()}`;
+}
+
+const pickJSON = s=>{
+  s=String(s||"").trim();
+  const f=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(f) s=f[1].trim();
+  const i=s.indexOf("{"), j=s.lastIndexOf("}");
+  if(i>=0 && j>i) s=s.slice(i,j+1);
+  return JSON.parse(s);
+};
+
+async function FlipGen(){
+  const my=TOKEN;
+  try{
+    if(!AI.live()) throw {code:"offline"};
+    const [ra,rb] = await Promise.all([
+      AI.chat([{role:"user",content:flipPrompt("a")}],{tier:"complex"}),
+      AI.chat([{role:"user",content:flipPrompt("b")}],{tier:"complex"})
+    ]);
+    if(TOKEN!==my) return;
+    if(/SAFETY_STOP/i.test(String(ra)) || /SAFETY_STOP/i.test(String(rb))){ S.flip.stop=true; save(); go("flip"); return; }
+    S.flip.a.script = pickJSON(ra);
+    S.flip.b.script = pickJSON(rb);
+    save(); go("flip");
+  }catch(e){
+    if(TOKEN!==my) return;
+    S.flip.fail=true; save(); go("flip");
+  }
+}
+
+function Flip(){
+  Sky.setMerge(.85);
+  if(S.flip.stop) return FlipUnsafe();
+  const A=S.flip.a, B=S.flip.b;
+  if(!S.flip.fail && !A.script && !B.script){ FlipGen(); return FlipLoading(); }
+  if(S.flip.fail && !A.script && !B.script) return FlipSkipScreen();
+  if(!A.done) return FlipRun("a");
+  if(!B.done) return FlipRun("b");
+  return FlipDone();
+}
+
+function FlipLoading(){
+  Sky.setMerge(.85); Sky.setEnergy(.5); Sky.setFocus(0);
+  const n=stage(`
+    <div class="synth grow">
+      <div style="height:clamp(110px,24dvh,200px)"></div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">Building the perspective flips</h2>
+        <p class="lede" style="margin-inline:auto">One for ${esc(S.a.name)}, one for ${esc(S.b.name)} — each walks through the dispute from the other person's eyes.</p>
+      </div>
+      <div class="waiting"><i></i><span>Working from both accounts</span></div></div>`);
+  wireTop(n,null); return n;
+}
+
+function FlipUnsafe(){
+  Sky.setMerge(.85); Sky.setEnergy(.3); Sky.setFocus(0);
+  const n=stage(`
+    ${topbar("Perspective flip",false)}
+    <div class="grow center" style="display:flex;flex-direction:column;gap:20px;text-align:center">
+      <div class="sealmark" style="width:96px;height:96px">${ICON.lock}</div>
+      <div class="stack sm" style="margin-inline:auto;max-width:44ch">
+        <h2 class="h2">This one needs people, not an app.</h2>
+        <p class="lede">The mediator read something in these accounts that points toward a safety situation. That's beyond what a machine should mediate — please talk to someone you trust, or to a professional, and if someone is in danger right now, involve emergency services first.</p>
+      </div>
+    </div>
+    <div class="stack"><button class="btn ghost" id="cont">I'll close this out</button></div>`);
+  $("#cont",n).onclick=()=>go("sealed");
+  wireTop(n,null); return n;
+}
+
+function FlipSkipScreen(){
+  Sky.setMerge(.85); Sky.setEnergy(.4); Sky.setFocus(0);
+  const n=stage(`
+    ${topbar("Perspective flip",false)}
+    <div class="grow center" style="display:flex;flex-direction:column;gap:20px;text-align:center">
+      <div class="stack sm" style="margin-inline:auto;max-width:44ch">
+        <h2 class="h2">The flip couldn't be built right now.</h2>
+        <p class="lede">Check that the mediator is connected, then retry — or skip it. It's a bonus step, not the point of what you've already done.</p>
+      </div>
+    </div>
+    <div class="stack"><button class="btn bloom" id="retry">Try again</button>
+      <button class="linkish" id="skip" style="text-align:center">Skip the flip</button></div>`);
+  $("#retry",n).onclick=()=>{ S.flip.fail=false; S.flip.a.script=null; S.flip.b.script=null; save(); go("flip"); };
+  $("#skip",n).onclick=()=>go("sealed");
+  wireTop(n,null); return n;
+}
+
+function FlipRun(side){
+  const st=S.flip[side], who=S[side], o=side==="a"?"b":"a", other=S[o], sc=st.script;
+  Sky.setMerge(.85); Sky.setEnergy(.55); Sky.setFocus(1);
+  const n=stage(`
+    ${topbar("Perspective flip",false)}
+    <div class="whobar"><span class="dot ${side}"></span>
+      <span class="name">${esc(who.name)}, looking through ${esc(other.name)}'s eyes</span>
+      <span class="meta" id="flmeta">step 1 of 1</span></div>
+    <div class="rail ${side}"><i id="flrail" style="width:0%"></i></div>
+    <div class="voice grow">
+      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">speaking</span></div></div>
+      <div class="caption" id="cap" style="white-space:pre-wrap"></div>
+      <div id="flask"></div>
+      <p class="tiny" id="flhint" style="text-align:center;padding-top:8px"></p>
+    </div>`);
+  wireTop(n,null);
+
+  const cards=[];
+  cards.push({k:"narrate", t:`Let's look at this through ${other.name}'s eyes for a few minutes. It doesn't make ${who.name}'s way wrong — it's a door you haven't opened yet.`});
+  if(sc.intro) cards.push({k:"narrate", head:"Where they're coming from", t:sc.intro});
+  (sc.emotions||[]).forEach(e=>cards.push({k:"narrate", head:"Event, and what it meant to them", t:`${other.name} read "…${e.event}" as ${e.theirRead}. That felt like ${e.theirFeeling}, and the reaction was to ${e.theirAction}. EVENT, what it meant to them, feeling, action.`}));
+  (sc.assumptions||[]).forEach(a=>cards.push({k:"narrate", head:"An assumption you've been carrying", t:a}));
+  if(sc.roleplay){
+    cards.push({k:"narrate", head:"Now you are them", t:sc.roleplay.setup});
+    cards.push({k:"ask", head:"Roleplay", t:sc.roleplay.question});
+    cards.push({k:"narrate", head:"Hold that next to what they said", t:sc.roleplayNote});
+  }
+  if(sc.gap) cards.push({k:"gap", gap:sc.gap});
+  if(sc.bridge) cards.push({k:"bridge", bridge:sc.bridge});
+  if(sc.resolution){
+    cards.push({k:"ask", head:"For them to understand", t:sc.resolution.q1});
+    cards.push({k:"ask", head:"Something you could change", t:sc.resolution.q2});
+    cards.push({k:"narrate", head:"What you both came to understand", t:sc.resolution.statement});
+  }
+  cards.push({k:"end"});
+
+  const cap=$("#cap",n), vst=$("#vstate",n), meta=$("#flmeta",n), rail=$("#flrail",n), hint=$("#flhint",n), askBox=$("#flask",n);
+  const my=TOKEN;
+  const alive=()=>TOKEN===my;
+  let i=(st.idx||0)-1, answers=(st.answers||[]).slice();
+  let said="";
+
+  function narrate(card){
+    vst.textContent=Speak.enabled?"speaking":"reading"; vst.classList.add("live");
+    cap.textContent=(card.head?card.head+"\n\n":"")+card.t;
+    try{ Speak.cancel(); Speak.feed(card.t); Speak.flush(card.t,()=>{ if(alive() && cited===i) vst.textContent="done"; }); }catch(e){}
+    const next=cards[i+1];
+    hint.innerHTML=`<button class="btn ${side}" id="flnext">Next — ${next?(next.k==="ask"?"your turn":"continue"):"finish"}</button>`;
+    $("#flnext",n).onclick=renderCard;
+  }
+
+  function showAsk(card){
+    vst.textContent="your turn"; vst.classList.remove("live");
+    cap.textContent=(card.head?card.head+"\n\n":"")+card.t;
+    askBox.innerHTML=`<div class="composer" style="border-top:1px solid var(--hair);padding-top:10px;margin-top:12px">
+        <textarea class="ta" id="flsay" rows="2" placeholder="Say it out loud… or type it here"></textarea>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn sm ghost" id="flmic" style="${Ears.supported()?"":"display:none"}">${ICON.mic} Say it</button>
+          <button class="btn sm ${side}" id="flok">Done — keep going</button>
+        </div></div>`;
+    const say=$("#flsay",n), ok=$("#flok",n), mic=$("#flmic",n);
+    said="";
+    const settle=()=>{
+      const v=(said||say.value).trim(); if(!v){ hint.textContent="Say or type something first."; return; }
+      Ears.stop(false,true);
+      answers.push(v); st.answers=answers.slice(); st.idx=i; save();
+      hint.textContent="Noted. Keep going.";
+      say.value="";
+      renderCard();
+    };
+    mic.onclick=()=>{
+      if(Ears.listening){ Ears.stop(true); return; }
+      said=""; say.value=""; hint.textContent="Listening…"; mic.innerHTML=ICON.stop; mic.classList.add("bloom");
+      Ears.start({
+        partial:t=>{ say.value=t; },
+        final:t=>{ said=t; say.value=t; },
+        onHeld:()=>{ if(alive()){ hint.textContent="I didn't catch that — try again or type."; mic.innerHTML=ICON.mic; mic.classList.remove("bloom"); } }
+      });
+    };
+    ok.onclick=settle;
+    say.addEventListener("keydown",e=>{ if(e.key==="Enter") settle(); });
+    setTimeout(()=>say.focus(),80);
+  }
+
+  let cited=null;
+
+  function renderCard(){
+    if(!alive()) return;
+    i++;
+    const card=cards[i];
+    meta.textContent=`step ${Math.min(i+1,cards.length)} of ${cards.length}`;
+    rail.style.width=Math.round((i+1)/cards.length*100)+"%";
+    cited=i;
+    askBox.innerHTML=""; hint.textContent="";
+    if(!card){ return finish(); }
+    if(card.k==="narrate") return narrate(card);
+    if(card.k==="ask") return showAsk(card);
+    if(card.k==="gap"){
+      vst.textContent="the gap"; vst.classList.remove("live"); cap.textContent="";
+      const g=card.gap;
+      askBox.innerHTML=`<div class="stack" style="padding-top:10px">
+        <div class="card ${side}"><div class="side-label ${side}"><span class="dot ${side}"></span>What ${esc(who.name)} thought</div>
+          <p style="font-size:15px;line-height:1.5">${esc(g.youThought)}</p></div>
+        <div class="card ${o}"><div class="side-label ${o}"><span class="dot ${o}"></span>What ${esc(other.name)} actually said</div>
+          <p style="font-size:15px;line-height:1.5">"${esc(g.theySaid)}"</p></div>
+        <div class="card bloom"><div class="side-label bloom"><span class="dot bloom"></span>The misunderstanding</div>
+          <p style="font-size:15px;line-height:1.5">${esc(g.misunderstanding)}</p></div>
+        <button class="btn ${side}" id="flnext">Next</button></div>`;
+      try{ Speak.cancel(); Speak.feed(g.misunderstanding); Speak.flush(g.misunderstanding,()=>{}); }catch(e){}
+      $("#flnext",n).onclick=renderCard;
+      return;
+    }
+    if(card.k==="bridge"){
+      vst.textContent="the bridge"; vst.classList.remove("live"); cap.textContent="";
+      const b=card.bridge;
+      askBox.innerHTML=`<div class="stack" style="padding-top:10px">
+        <div class="card"><p style="font-size:14px;line-height:1.5"><b>What ${esc(who.name)} may have misunderstood about ${esc(other.name)}</b><br><span style="color:var(--mist)">${esc(b.aboutThem)}</span></p></div>
+        <div class="card"><p style="font-size:14px;line-height:1.5"><b>What ${esc(other.name)} may have misunderstood about ${esc(who.name)}</b><br><span style="color:var(--mist)">${esc(b.aboutYou)}</span></p></div>
+        <div class="card bloom"><p style="font-size:14px;line-height:1.5"><b>What both can understand now</b><br>${esc(b.bothNow)}</p></div>
+        <button class="btn ${side}" id="flnext">Next</button></div>`;
+      $("#flnext",n).onclick=renderCard;
+      return;
+    }
+  }
+
+  function finish(){
+    S.flip[side].done=true;
+    S.flip[side].answers=answers;
+    S.flip[side].statement=(sc.resolution&&sc.resolution.statement)||"";
+    S.flip[side].idx=0;
+    save();
+    go("flip");
+  }
+
+  renderCard();
+  return n;
+}
+
+function FlipDone(){
+  Sky.setMerge(1); Sky.setEnergy(.6); Sky.setFocus(0);
+  const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
+  const sb=S.flip.b.statement||S.flip.b.script?.resolution?.statement||"";
+  const n=stage(`
+    ${topbar("Perspective flip",false)}
+    <div class="grow stack lg">
+      <div><h2 class="h2">What both of you came to understand</h2>
+        <p class="lede" style="margin-top:9px">Each of you walked through the dispute from the other side. This is where you landed.</p></div>
+      <div class="stack">
+        <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(S.a.name)} said</div>
+          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sa||"I saw it from the other side.")}</p></div>
+        <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(S.b.name)} said</div>
+          <p style="font-size:15.5px;margin-top:10px;line-height:1.55">${esc(sb||"I saw it from the other side too.")}</p></div>
+      </div>
+    </div>
+    <div class="stack"><button class="btn bloom" id="goSeal">Close this out</button></div>`);
+  $("#goSeal",n).onclick=()=>go("sealed");
+  wireTop(n,null); return n;
+}
+
+/* ---------------------------------------------------------------
+   23. SEALED   22. SEALED
    --------------------------------------------------------------- */
 function Sealed(){
   Sky.setMerge(1); Sky.setEnergy(1); Sky.setFocus(0);
   const r=S.report;
+  const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
+  const sb=S.flip.b.statement||S.flip.b.script?.resolution?.statement||"";
+  const hasFlip = !!(sa||sb);
   const n=stage(`
     <div class="grow center" style="display:flex;flex-direction:column;gap:24px;text-align:center">
       <div class="orbwrap" style="height:min(26dvh,190px)"></div>
       <div class="stack"><h1 class="h2">${esc(S.a.name)} and ${esc(S.b.name)}, both agreed.</h1>
         <p class="headline" style="color:var(--mist);font-size:19px;margin-top:10px">${esc(r.closing)}</p></div>
+      ${hasFlip?`<div class="card bloom" style="text-align:left"><div class="stack sm">
+        <p class="tiny" style="color:var(--bloom)">Through the perspective flip</p>
+        ${sa?`<p style="font-size:14px;line-height:1.55">${esc(S.a.name)}: "${esc(sa)}"</p>`:""}
+        ${sb?`<p style="font-size:14px;line-height:1.55">${esc(S.b.name)}: "${esc(sb)}"</p>`:""}
+      </div></div>`:""}
       <div class="card bloom" style="text-align:left"><div class="stack sm">
         ${r.pact.map((p,i)=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start">
           <span class="pactnum" style="font-size:15px">${i+1}</span><span style="font-size:14px;line-height:1.5">${esc(p)}</span></div>`).join("")}
@@ -2614,6 +2928,11 @@ function summaryText(){
   L.push("","HOW EACH ADDED TO IT",`  ${A} (${r.contribution.a.pct}%): ${r.contribution.a.note}`,`  ${B} (${r.contribution.b.pct}%): ${r.contribution.b.note}`);
   L.push("","THE AGREEMENT"); r.pact.forEach((p,i)=>L.push(`  ${i+1}. ${p}`));
   L.push("","FIRST WORDS",`  ${A}: "${r.apology.a}"`,`  ${B}: "${r.apology.b}"`);
+  const sa=S.flip.a.statement||S.flip.a.script?.resolution?.statement||"";
+  const sb=S.flip.b.statement||S.flip.b.script?.resolution?.statement||"";
+  if(sa||sb){ L.push("","PERSPECTIVE FLIP");
+    if(sa) L.push(`  ${A}: "${sa}"`);
+    if(sb) L.push(`  ${B}: "${sb}"`); }
   L.push("",r.closing);
   return L.join("\n");
 }
