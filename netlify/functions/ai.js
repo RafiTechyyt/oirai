@@ -287,34 +287,40 @@ const audioResp = (buf) =>
     }
   });
 
+async function ttsResponse(text, lang) {
+  if (!text) return json({ error: "text is required" }, 400);
+  if (!AZURE_VOICES[lang] && !GT_LANG[lang]) return json({ error: `no cloud voice for ${lang}` }, 400);
+  const hash = createHash("sha1").update(lang + "|" + text).digest("hex");
+  try {
+    const store = getStore({ name: "oir-setup", consistency: "strong" });
+    const cached = await store.get("tts:" + hash);
+    if (cached) return audioResp(await cached.arrayBuffer());
+  } catch (e) {}
+  const audio = (await azureSpeak(text, lang)) || (await edgeSpeak(text, lang)) || (await googleSpeak(text, lang));
+  if (!audio) return json({ error: "TTS backend unavailable — set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION for the most reliable cloud voices" }, 502);
+  try {
+    const store = getStore({ name: "oir-setup", consistency: "strong" });
+    await store.set("tts:" + hash, new Blob([audio]));
+  } catch (e) {}
+  return audioResp(audio);
+}
+
 export default async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
-  if (req.method === "GET") return json({ ok: true, name: "oir-ai-proxy" });
-
   const url = new URL(req.url);
+  if (req.method === "GET") {
+    /* one-click voice proof / test link: /ai?tts=1&lang=ml-IN&text=… */
+    if (url.searchParams.get("tts")) return ttsResponse(url.searchParams.get("text") || "", url.searchParams.get("lang") || "");
+    return json({ ok: true, name: "oir-ai-proxy" });
+  }
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return json({ error: "body must be JSON" }, 400);
 
   /* cloud voice for Malayalam/Hindi (and any later language) */
   if (url.searchParams.get("tts")) {
-    const text = String(body.text || "").trim();
-    const lang = String(body.lang || "");
-    if (!text) return json({ error: "text is required" }, 400);
-    if (!AZURE_VOICES[lang] && !GT_LANG[lang]) return json({ error: `no cloud voice for ${lang}` }, 400);
-    const hash = createHash("sha1").update(lang + "|" + text).digest("hex");
-    try {
-      const store = getStore({ name: "oir-setup", consistency: "strong" });
-      const cached = await store.get("tts:" + hash);
-      if (cached) return audioResp(await cached.arrayBuffer());
-    } catch (e) {}
-    const audio = (await azureSpeak(text, lang)) || (await edgeSpeak(text, lang)) || (await googleSpeak(text, lang));
-    if (!audio) return json({ error: "TTS backend unavailable — set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION for the most reliable cloud voices" }, 502);
-    try {
-      const store = getStore({ name: "oir-setup", consistency: "strong" });
-      await store.set("tts:" + hash, new Blob([audio]));
-    } catch (e) {}
-    return audioResp(audio);
+    return ttsResponse(String(body.text || "").trim(), String(body.lang || ""));
   }
 
   const provider = body.provider;
