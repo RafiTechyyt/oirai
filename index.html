@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Obviously, I'm Right</title>
 <meta name="description" content="A two-sided AI mediator. Both people speak privately. Nobody gets declared the winner.">
@@ -1306,6 +1307,7 @@ const spokenLang = ()=>{
   return "English";
 };
 const LANG_LOCK = ()=>`\n\nLANGUAGE: The two people did their talking in ${spokenLang()}. Write this ENTIRE message in ${spokenLang()} — every sentence, question and list item. Never switch language midway and never fall back to English.`;
+const INDIC = s => /[\u0D00-\u0D7F\u0900-\u097F]/.test(JSON.stringify(s||""));
 
 function doubtsPrompt(){
   return `You are the mediator in "Obviously, I'm Right". You have now heard both people privately, separately.
@@ -1365,6 +1367,9 @@ Obligations:
 - Write so BOTH could read it aloud without feeling ambushed.
 - Shape every chapter to THIS conflict and these two people; never reuse generic phrasings.
 - No stock phrases anywhere: no "at the end of the day", no "it's not about blame", no sentence that could appear in any other mediation. Every line must cite something only these two people actually said or did.
+- Quote their real words wherever you can. Inventing a quote is forbidden: if you cannot trace a line back to a specific thing these two said above, cut it.
+- The headline must name the concrete thing this argument is really about — a specific moment or situation from the accounts — never a proverb or a slogan.
+- Every pact step must be something only these two could have agreed to this week. Strip any generic "communicate better" filler.
 
 ${LANG_LOCK()}
 
@@ -1421,10 +1426,21 @@ const Local = {
     }
     return lead + this.qs[i](me,o);
   },
-  doubts(){ return {
-    a:[`You mentioned a specific moment. What happened in the hour before it?`,`Was there a point where you nearly said something and didn't?`],
-    b:[`Take me through that same moment from your side, step by step.`,`Was there something you assumed was obvious that you never actually said?`]
-  };},
+  doubts(){ 
+    const L=spokenLang();
+    if(L==="Malayalam") return {
+      a:[`നിങ്ങളെ ഏറ്റവും വേദനിപ്പിച്ച നിമിഷം ഏത്?`,`അവർ എന്ത് ചെയ്തു എന്നതിന് പകരം എന്താണ് നിങ്ങൾ ആഗ്രഹിച്ചത്?`],
+      b:[`അതേ നിമിഷം നിങ്ങളുടെ ഭാഗത്തു നിന്ന് പറഞ്ഞു നോക്കൂ.`,`അവർക്ക് അറിയാമെന്ന് നിങ്ങൾ കരുതി പറയാതെ വിട്ടത് എന്ത്?`]
+    };
+    if(L==="Hindi") return {
+      a:[`वो कौन सा लम्हा था जिसने सबसे ज़्यादा चोट पहुँचाई?`,`आप वास्तव में चाहते थे कि वो क्या करे?`],
+      b:[`उसी लम्हे को अपनी तरफ़ से सुनाइए।`,`कुछ ऐसा जो आपने मान लिया पर कभी कहा नहीं?`]
+    };
+    return {
+      a:[`Which moment hurt most?`,`What did you actually want them to do instead?`],
+      b:[`Take me through that same moment from your side.`,`Was there something you assumed was obvious but never said out loud?`]
+    };
+  },
   longest(side,n=1){
     return S[side].turns.filter(t=>t.role==="user").map(t=>t.content.trim())
       .sort((a,b)=>b.length-a.length).slice(0,n)
@@ -1821,6 +1837,38 @@ function VoiceRoom(n, cfg){
     if(!alive()) return;
     if(my!==flow){ busy=false; Sky.setLevel(0); idle(); return; }   // a barge-in took over
     busy=false; Sky.setLevel(0);
+    if(finished && cfg.addMore){                       // one last thing before sealing
+      setState("anything else?",false);
+      mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.mic; mainBtn.style.display="grid";
+      kbd.style.display="grid"; comp.hidden=!typing;
+      const h=$("#hint",n);
+      h.innerHTML=`<div class="stack sm" style="max-width:440px;margin-inline:auto">
+          <p class="tiny" style="text-align:center;color:var(--chalk)">Anything else before you seal this room? Say it — then seal.</p>
+          <div class="btnrow"><button class="btn ghost sm" id="sealX">Seal it — I'm done</button></div></div>`;
+      const seal=()=>{ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; comp.hidden=true; cfg.onFinish(); };
+      $("#sealX",n).onclick=seal;
+      commit=async (txt)=>{
+        if(!alive()) return; Ears.stop(false,true);
+        cfg.onUser(txt);
+        let ack="";
+        try{
+          if(!AI.live()) throw {code:"offline"};
+          Sky.setLevel(.12); setState(Speak.enabled?"speaking":"replying",true); cap.textContent="";
+          ack = await cfg.addMore(txt, t=>{ if(alive()){ cap.textContent=String(t).replace(/<ENOUGH>/g,"").trim(); Speak.feed(String(t).replace(/<ENOUGH>/g,"")); } });
+        }catch(e){ ack = "That's noted. Thank you."; }
+        if(!alive()) return;
+        const cleanAck=String(ack).replace(/<ENOUGH>/g,"").trim();
+        cap.textContent=cleanAck;
+        await new Promise(res=>{ let settled=false; const done=()=>{ if(!settled){ settled=true; res(); } };
+          Speak.flush(cleanAck, done);
+          if(!Speak.enabled || !Speak.ready()) setTimeout(done, Math.min(cleanAck.length*26, 5200));
+          else setTimeout(done, Math.min(cleanAck.length*95, 32000)); });
+        if(!alive()) return;
+        seal();
+      };
+      if(queued){ const q=queued; queued=""; setTimeout(()=>commit(q),330); }
+      return;
+    }
     if(finished){ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; comp.hidden=true; cfg.onFinish(); return; }
     idle();
     if(queued){ const q=queued; queued=""; hint.textContent=""; setTimeout(()=>commit(q),350); return; }
@@ -1988,16 +2036,32 @@ function Chamber(side){
   const room = VoiceRoom(n,{
     next: async (onText)=>{
       if(!AI.live()) throw {code:"offline"};
-      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)}, ...st.turns];
+      const told = st.turns.filter(t=>t.role==="assistant")
+        .map(t=>String(t.content).replace(/<ENOUGH>/g,"").trim()).filter(Boolean);
+      const antiRepeat = told.length
+        ? `\n\nQUESTIONS YOU ALREADY ASKED ${st.name} — NEVER ask these again, and never rephrase them:\n${told.map((q,i)=>`${i+1}. ${q}`).join("\n")}\nAsk about NEW ground only: choose a phrase from the last answer you have not explored yet. If nothing new is worth digging into, close with <ENOUGH> now.`
+        : "";
+      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)+antiRepeat}, ...st.turns];
       return await streamAI(turns,onText,"default");
     },
     fallback: ()=>Local.next(side),
+    addMore: async (text, onText)=>{
+      if(!AI.live()) throw {code:"offline"};
+      const L = spokenLang();
+      const named = L==="Malayalam"?"Malayalam":L==="Hindi"?"Hindi":"English";
+      return await AI.chat([{role:"user",content:
+        `The private interview with ${st.name} is finished. ${st.name} has one last thing to add: "${text}".\n\nAcknowledge it warmly in one or two short sentences, entirely in ${named}${named==="English"?"":" and never mix languages"}. NO new questions. End with <ENOUGH>.`}],{onText, tier:"quick"});
+    },
     onUser: t=>{ st.turns.push({role:"user",content:t}); save(); },
     onAI: (text,enough)=>{
       st.turns.push({role:"assistant",content:text}); st.qCount++; save();
       room.setMeta(`question ${Math.min(st.qCount+1,MAXQ)}`);
       room.setRail(Math.round(st.qCount/MAXQ*100));
-      return enough || st.qCount>=MAXQ;
+      const asked=st.turns.filter(t=>t.role==="assistant").map(t=>String(t.content).replace(/<ENOUGH>/g,"").trim());
+      const last=asked[asked.length-1];
+      const zz=s=>String(s).toLowerCase().replace(/[^a-z\u0d00-\u0d7f\u0900-\u097f0-9]+/g,"");
+      const repeated = !!(last && zz(last).length>8 && asked.slice(0,-1).some(q=>zz(q)===zz(last)));
+      return enough || st.qCount>=MAXQ || repeated;
     },
     onFinish: ()=>{
       st.done=true; save();
@@ -2112,7 +2176,23 @@ function Doubting(){
     }catch(e){ cross = Local.doubts(); }
     if(TOKEN!==my) return;
     const fix = v => Array.isArray(v)&&v.length ? v.slice(0,2).map(String) : null;
-    S.cross = { a: fix(cross?.a)||Local.doubts().a, b: fix(cross?.b)||Local.doubts().b };
+    const inLang = spokenLang();
+    const rewrite = async qs=>{
+      if(inLang==="English" || !qs || !qs.length) return qs;
+      const bad = qs.filter(q=>!INDIC(q));
+      if(!bad.length) return qs;
+      try{
+        if(!AI.live()) throw {code:"offline"};
+        const line = await AI.chat([{role:"user",content:
+          `The mediation is happening in ${inLang}. These mediator questions must be in ${inLang} too. Translate exactly, keeping the meaning:\n${qs.map((q,i)=>(i+1)+". "+q).join("\n")}\n\nReply with only the ${inLang} questions, one per line. Nothing else.`}],{tier:"default"});
+        const out = String(line).split(/\n+/).map(s=>s.replace(/^\s*[-*\d.)]*\s*/,"").trim()).filter(Boolean).slice(0,qs.length);
+        if(out.length===qs.length && out.every(q=>INDIC(q))) return out;
+      }catch(e){}
+      return qs;
+    };
+    const qa = await rewrite(fix(cross?.a));
+    const qb = await rewrite(fix(cross?.b));
+    S.cross = { a: qa||Local.doubts().a, b: qb||Local.doubts().b };
     S.a.answers=[]; S.b.answers=[];
     clearInterval(tick); save();
     await wait(350);
@@ -2217,7 +2297,7 @@ function Synth(){
     if(TOKEN!==my) return;
     clearInterval(tick);
     all.forEach(s=>{ s.classList.remove("on"); s.classList.add("done"); });
-    S.report = normalise(rep); S.a.satisfied=null; S.b.satisfied=null;
+    S.report = await finaliseReport(rep); S.a.satisfied=null; S.b.satisfied=null;
     S.a.rebuttal=""; S.b.rebuttal=""; save();
     Sky.setMerge(1);
     await wait(800);
@@ -2240,6 +2320,24 @@ function normalise(r){
   pa=clamp(Math.round(pa),25,75); r.contribution.a.pct=pa; r.contribution.b.pct=100-pa;
   r.pact=arr(r.pact,d.pact).slice(0,4);
   r.apology=r.apology||d.apology; r.spoken=r.spoken||d.spoken; r.closing=r.closing||d.closing;
+  return r;
+}
+
+/* If the room spoke Malayalam/Hindi but the model (or the offline fallback)
+   produced an English report, quietly ask once for a full in-language rewrite.
+   This is what prevents the summary from suddenly switching language. */
+async function finaliseReport(rep){
+  let r = normalise(rep);
+  const L = spokenLang();
+  if(L!=="English" && !INDIC(r)){
+    try{
+      if(AI.live()){
+        const again = await AI.chat([{role:"user",content:
+          synthesisPrompt()+"\n\nHARD REQUIREMENT: this mediation happened in "+L+". Your last draft came out in the wrong language. EVERY value in the JSON must be in "+L+" — names stay as they are, everything else gets translated. Return the corrected JSON now."}],{json:true,tier:"complex"});
+        if(again && INDIC(again)) r = normalise(again);
+      }
+    }catch(e){}
+  }
   return r;
 }
 
