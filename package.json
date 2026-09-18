@@ -1,0 +1,10 @@
+{
+  "name": "oir-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Obviously, I'm Right — Netlify functions (AI proxy + host config)",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.0"
+  }
+}

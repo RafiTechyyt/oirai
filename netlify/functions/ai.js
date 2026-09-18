@@ -1,7 +1,8 @@
 // AI proxy for "Obviously, I'm Right".
-// Keeps the provider API keys in Netlify environment variables instead of the
-// client bundle. The page calls this instead of the providers directly when the
-// proxy is reachable; keys are never shipped to browsers.
+// Keeps the provider API keys server-side. Keys are read from the host
+// config blob (saved by the admin panel through /config) first, then from
+// Netlify environment variables as a fallback. Keys are never shipped to
+// browsers.
 //
 //   GET  /.netlify/functions/ai?ping=1  ->  {ok:true}  (health check, used by the client)
 //   POST /.netlify/functions/ai
@@ -9,8 +10,8 @@
 //        -> streams an OpenAI-style SSE response (data: {"choices":[{"delta":{"content":"..."}}]})
 //
 // Environment variables to set in Netlify (Site configuration -> Environment variables):
-//   GROQ_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
-// A provider without its env var is skipped and returns a clear error.
+//   GROQ_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   (fallback bootstrap; the admin panel overrides these)
+import { getStore } from "@netlify/blobs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,10 +25,28 @@ const json = (obj, status = 200) =>
     headers: { "Content-Type": "application/json", ...CORS }
   });
 
+/* keys saved by the host admin panel (blob) take priority over env vars */
+let cachedKeys = null;
+async function adminKeys() {
+  if (cachedKeys) return cachedKeys;
+  try {
+    const store = getStore({ name: "oir-setup", consistency: "strong" });
+    const cfg = await store.get("setup", { type: "json", consistency: "strong" });
+    cachedKeys = (cfg && cfg.keys && typeof cfg.keys === "object") ? cfg.keys : {};
+  } catch (e) {
+    cachedKeys = {};
+  }
+  return cachedKeys;
+}
+const keyFor = (name) => {
+  const k = (cachedKeys || {})[name];
+  return (k && String(k).trim()) || process.env[`${name.toUpperCase()}_API_KEY`] || "";
+};
+
 const PROVIDERS = {
   groq: {
     endpoint: () => "https://api.groq.com/openai/v1/chat/completions",
-    key: () => process.env.GROQ_API_KEY,
+    key: () => keyFor("groq"),
     build: (turns, tier, wantJson) => {
       const body = {
         model: tier === "complex" ? "openai/gpt-oss-120b" : "openai/gpt-oss-20b",
@@ -42,7 +61,7 @@ const PROVIDERS = {
   },
   openai: {
     endpoint: () => "https://api.openai.com/v1/chat/completions",
-    key: () => process.env.OPENAI_API_KEY,
+    key: () => keyFor("openai"),
     build: (turns, tier, wantJson) => {
       const body = {
         model: "gpt-6-astra",
@@ -60,7 +79,7 @@ const PROVIDERS = {
       const model = tier === "complex" ? "gemini-pro-latest" : "gemini-flash-latest";
       return `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
     },
-    key: () => process.env.GEMINI_API_KEY,
+    key: () => keyFor("gemini"),
     build: (turns, tier, wantJson) => {
       const body = {
         contents: turns.map((t) => ({ role: t.role === "assistant" ? "model" : "user", parts: [{ text: t.content }] })),
@@ -96,6 +115,7 @@ export default async (req) => {
   if (!conf) return json({ error: `unknown provider: ${provider}` }, 400);
   if (!Array.isArray(turns) || !turns.length) return json({ error: "turns is required" }, 400);
 
+  await adminKeys();
   const key = conf.key();
   if (!key) return json({ error: `${provider.toUpperCase()}_API_KEY is not set on this server` }, 500);
 

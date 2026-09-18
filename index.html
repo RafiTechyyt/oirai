@@ -247,6 +247,9 @@ button{cursor:pointer;background:none;border:none;padding:0}
 @media(min-width:520px){.split{grid-template-columns:1fr 1fr}}
 .side-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:9px}
 .side-label.a{color:var(--ember)} .side-label.b{color:var(--iris)}
+.check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mist);margin-top:6px;cursor:pointer}
+.check input{width:16px;height:16px;accent-color:var(--bloom)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
 
 .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:13px;line-height:1.35;border:1px solid var(--hair);background:rgba(242,238,249,.035)}
 .tag.fact{border-color:rgba(255,111,181,.28);background:rgba(255,111,181,.07)}
@@ -538,19 +541,25 @@ const Speak = (()=>{
   let levelTimer=null;
 
   function speechLang(){
-    const acc = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
-    if(acc!=="AUTO") return acc;
+    const l = store.get("lang", null) || store.get("accent", null) || "auto";
+    if(l && l!=="auto") return l;
     return (navigator.language && /^en[-_]?/i.test(navigator.language)) ? navigator.language : "en-US";
   }
   function pick(){
     if(!synth) return;
     const vs = synth.getVoices(); if(!vs.length) return;
-    const acc  = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
-    const regs = acc==="AUTO" ? ["US","GB","AU","NZ","CA","IN"] : [acc.replace(/^EN-/,"")];
-    const ex   = regs.map(r=>new RegExp("en[-_]+"+r+"\\b","i"));
-    const want = [
-      v=>ex.some(r=>r.test(v.lang)) && /natural|neural|google|premium|enhanced|online|desktop/i.test(v.name),
-      v=>ex.some(r=>r.test(v.lang)),
+    const l = store.get("lang", null) || store.get("accent", null) || "auto";
+    const tag = (l && l!=="auto" && /^[a-z]{2}/i.test(l)) ? l.toLowerCase() : null;
+    const base = tag ? tag.split(/[-_]/)[0] : "en";
+    const like = (v)=>{ const p=(v.lang||"").toLowerCase().split(/[-_]/)[0]; return tag ? (p===base||p===tag) : p==="en"; };
+    const want = tag ? [
+      v=>like(v) && /natural|neural|google|premium|enhanced|online|desktop/i.test(v.name),
+      v=>like(v),
+      v=>/^en[-_]/i.test(v.lang) && /google|samantha|karen|daniel|aaron|microsoft|zira|natural|neural/i.test(v.name),
+      v=>/^en[-_]/i.test(v.lang)
+    ] : [
+      v=>/en[-_](US|GB|AU|NZ|CA|IN)\b/i.test(v.lang) && /natural|neural|google|premium|enhanced|online|desktop/i.test(v.name),
+      v=>/en[-_](US|GB|AU|NZ|CA|IN)\b/i.test(v.lang),
       v=>/^en[-_]/i.test(v.lang) && /google|samantha|karen|daniel|aaron|microsoft|zira|natural|neural/i.test(v.name),
       v=>/^en[-_]/i.test(v.lang)
     ];
@@ -656,10 +665,10 @@ const Ears = (()=>{
     onPartial=partial; onFinal=final; finalText=""; interim="";
     rec = new SR();
     rec.continuous = true; rec.interimResults = true;
-    const acc = (store.get("accent","auto")||"auto").toUpperCase().replace(/[-_]/g,"-");
-    rec.lang = acc==="AUTO"
+    const lan = store.get("lang", null) || store.get("accent", null) || "auto";
+    rec.lang = (lan==="auto")
       ? (navigator.language && /^en[-_]?/i.test(navigator.language) ? navigator.language : "en-US")
-      : acc;
+      : lan;
     rec.onresult = e=>{
       interim="";
       for(let i=e.resultIndex;i<e.results.length;i++){
@@ -703,13 +712,18 @@ const AI = {
   keys:{groq:"", openai:"", gemini:""},
 
   async init(){
-    this.provider = store.get("provider", "groq");
     this.proxyBase = store.get("proxy", null) || "/.netlify/functions/ai";
     this.serverUrl = null;
     this.keys.groq   = store.get("key_groq",   "");
     this.keys.openai = store.get("key_openai", "");
     this.keys.gemini = store.get("key_gemini", store.get("key", null)); // migrate the old single key slot
     await this.detectServer();
+    this.hasConfig = false; this.cfg = null; this.configUrl = null;
+    if(this.serverUrl) await this.fetchConfig();
+    const cloudAccent = this.cfg && this.cfg.accent;
+    if(cloudAccent && !store.get("lang", null) && !store.get("accent", null)) store.set("lang", cloudAccent);
+    this.provider = store.get("provider", null) || (this.cfg && this.cfg.provider) || "groq";
+    this.lang = store.get("lang", null) || store.get("accent", null) || "auto";
     if(window.claude && typeof window.claude.use==="function"){
       try{
         const s = await Promise.race([window.claude.use("sample"), wait(4500).then(()=>null)]);
@@ -718,6 +732,33 @@ const AI = {
     }
     this.mode = (this.serverUrl || this.keys[this.provider]) ? this.provider : "local";
     return this.mode;
+  },
+  /* the public host config (provider/accent/firebase defaults for everyone) */
+  async fetchConfig(){
+    this.configUrl = (this.proxyBase || "/.netlify/functions/ai").replace(/[^/]+$/, "config");
+    try{
+      const r = await Promise.race([fetch(this.configUrl,{headers:{"Accept":"application/json"},mode:"cors"}), wait(2500).then(()=>null)]);
+      if(!r || !r.ok) return null;
+      const j = await r.json().catch(()=>null);
+      if(j && j.ok){ this.cfg = j; this.hasConfig = true; return j; }
+    }catch(e){}
+    return null;
+  },
+  /* when the user speaks Malayalam/Hindi (or the owner set a language), the
+     mediator replies in that language. Auto mode detects it from your words. */
+  respondTurns(turns, opts){
+    if(opts && (opts.json || opts.tier==="quick")) return turns;
+    let l = this.lang || "auto";
+    if(l==="auto"){
+      const last = [...turns].reverse().find(t=>t.role==="user");
+      const c = last ? String(last.content) : "";
+      if(/[\u0D00-\u0D7F]/.test(c)) l="ml-IN";
+      else if(/[\u0900-\u097F]/.test(c)) l="hi-IN";
+      else l="en";
+    }
+    if(l && /^ml[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Malayalam, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
+    if(l && /^hi[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Hindi, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
+    return turns;
   },
   /* the netlify function answers a ping and carries the provider keys server-side */
   async detectServer(){
@@ -738,6 +779,7 @@ const AI = {
      across the other providers and finally any locally-stored keys, instead
      of silently dropping to the scripted mediator */
   async chat(turns, opts={}){
+    turns = this.respondTurns(turns, opts);
     const order = [];
     if(this.mode==="claude") order.push({backend:"claude"});
     if(this.serverUrl){
@@ -1026,7 +1068,8 @@ const Net = (()=>{
   const SHARED = ["stage","relation","topic","report","cross","round","signed"];
 
   async function init(){
-    const fb = store.get("fb", null);
+    const cloud = AI.cfg && AI.cfg.firebaseUrl ? String(AI.cfg.firebaseUrl) : "";
+    const fb = cloud || store.get("fb", null);
     if(window.claude && typeof window.claude.use==="function"){
       try{
         const d = await Promise.race([window.claude.use("db"), wait(4000).then(()=>null)]);
@@ -1335,7 +1378,8 @@ function render(){
     open:Open, setup:Setup, pair:Pair, hold:Hold,
     chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
     doubting:Doubting, doubtsA:()=>Doubts("a"), doubtsB:()=>Doubts("b"), sealD:SealD, hold2:Hold2,
-    synth:Synth, findings:Findings, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed
+    synth:Synth, findings:Findings, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
+    admin:Admin
   };
   app.innerHTML="";
   const n = (map[S.stage]||Open)();
@@ -1354,6 +1398,130 @@ function topbar(title,back){
 function wireTop(n,back){
   const b=$("#backBtn",n); if(b&&back) b.onclick=back;
   const c=$("#cogBtn",n); if(c) c.onclick=openSettings;
+}
+
+/* ---------------------------------------------------------------
+   9b. HOST PANEL
+   One place where the owner saves provider keys, the default
+   language, and the Firebase URL. Everyone else gets it for free.
+   --------------------------------------------------------------- */
+function Admin(){
+  const cfgUrl = AI.configUrl || (AI.proxyBase || "/.netlify/functions/ai").replace(/[^/]+$/,"config");
+  const n = stage(`
+    ${topbar("Host settings", true)}
+    <div class="grow stack lg" style="padding-top:8px">
+      <div><h2 class="h2">Everything everyone sees, from here.</h2>
+        <p class="lede" style="margin-top:9px">Save once — provider keys, default language, and two-device rooms apply to every visitor on their next visit. Keys stay on the server; nothing is kept in the repo.</p></div>
+      <div class="notice" id="admMsg" hidden></div>
+      <div class="field"><span>Host password</span>
+        <input class="input" id="admPass" type="password" placeholder="ADMIN_TOKEN from Netlify" autocomplete="off">
+        <p class="tiny">The ADMIN_TOKEN you created in Netlify → Environment variables. This session only.</p></div>
+      <div class="field"><span>Default provider</span>
+        <select class="input" id="admProv">
+          <option value="groq">Groq</option>
+          <option value="openai">OpenAI · GPT-6 Astra</option>
+          <option value="gemini">Google Gemini</option>
+        </select>
+        <p class="tiny">Used when a visitor hasn't chosen one. The mediator can still fall back across providers.</p></div>
+      <div class="field"><span>Default language &amp; voice</span>
+        <select class="input" id="admLang">
+          <option value="auto">Auto (follow the browser)</option>
+          <option value="en-US">English — US</option>
+          <option value="en-GB">English — UK</option>
+          <option value="en-AU">English — Australia</option>
+          <option value="en-NZ">English — New Zealand</option>
+          <option value="en-CA">English — Canada</option>
+          <option value="en-IN">English — India</option>
+          <option value="ml-IN">മലയാളം — Malayalam</option>
+          <option value="hi-IN">हिन्दी — Hindi</option>
+        </select>
+        <p class="tiny">Everyone's listening, voice and replies default to this. Malayalam/Hindi speaking needs a matching voice on the device for best quality.</p></div>
+      <div class="field"><span>Firebase Realtime Database URL</span>
+        <input class="input" id="admFb" placeholder="https://your-project-default-rtdb.firebaseio.com">
+        <p class="tiny">Turns on two-device rooms for everyone. Leave empty for single-device use.</p></div>
+      <div class="card">
+        <div class="stack sm">
+          <div class="side-label"><span class="dot a"></span>Provider keys — stored on the server, never shown back</div>
+          <div class="field"><span>Groq key</span>
+            <input class="input mono" id="admKeyGroq" type="password" placeholder="gsk_…" autocomplete="off">
+            <label class="check"><input type="checkbox" id="clrGroq"> remove this key</label></div>
+          <div class="field"><span>OpenAI key</span>
+            <input class="input mono" id="admKeyOpenai" type="password" placeholder="sk-proj-…" autocomplete="off">
+            <label class="check"><input type="checkbox" id="clrOpenai"> remove this key</label></div>
+          <div class="field"><span>Gemini key</span>
+            <input class="input mono" id="admKeyGemini" type="password" placeholder="AIza…" autocomplete="off">
+            <label class="check"><input type="checkbox" id="clrGemini"> remove this key</label></div>
+        </div>
+      </div>
+      <button class="btn bloom" id="admSave">Save for everyone</button>
+      <button class="btn ghost" id="admReload">Reload current config</button>
+      <div class="notice" id="admStatus" hidden></div>
+    </div>`);
+  const $id=x=>$("#"+x,n);
+  const show=(m,w)=>{ const e=$id("admMsg"); e.hidden=false; e.className="notice"+(w?" warn":""); e.innerHTML=m; };
+  const status=(m,w)=>{ const e=$id("admStatus"); e.hidden=false; e.className="notice"+(w?" warn":""); e.innerHTML=m; };
+  async function load(){
+    try{
+      const r=await fetch(cfgUrl);
+      if(!r.ok) return show("Couldn't reach the config endpoint (HTTP "+r.status+"). Open the app on the Netlify-hosted site, not the local file.", true);
+      const j=await r.json().catch(()=>null);
+      if(!j) return show("Config endpoint returned something unexpected.", true);
+      $id("admProv").value=j.provider||"groq";
+      $id("admLang").value=(j.accent && j.accent!=="auto")?j.accent:"auto";
+      $id("admFb").value=(j.firebaseUrl||"").replace(/\/+$/,"");
+      const k=j.hasKeys||{};
+      $id("admKeyGroq").placeholder    = k.groq   ? "gsk_ — already set"     : "gsk_…";
+      $id("admKeyOpenai").placeholder  = k.openai ? "sk-proj- — already set" : "sk-proj-…";
+      $id("admKeyGemini").placeholder  = k.gemini ? "AIza — already set"     : "AIza…";
+      show(j.adminSet
+        ? "This config is live and applies to everyone."
+        : "No saved config yet. Enter your ADMIN_TOKEN, set the defaults, save once.");
+    }catch(e){
+      show("Couldn't load config: "+e.message, true);
+    }
+  }
+  const body=()=>{
+    const b={
+      provider:$id("admProv").value,
+      accent:$id("admLang").value,
+      firebaseUrl:$id("admFb").value.trim().replace(/\/+$/,"")
+    };
+    const keys={}, clear={};
+    const g=$id("admKeyGroq").value.trim(), o=$id("admKeyOpenai").value.trim(), m=$id("admKeyGemini").value.trim();
+    if(g) keys.groq=g; if(o) keys.openai=o; if(m) keys.gemini=m;
+    if($id("clrGroq").checked) clear.groq=true;
+    if($id("clrOpenai").checked) clear.openai=true;
+    if($id("clrGemini").checked) clear.gemini=true;
+    if(Object.keys(keys).length) b.keys=keys;
+    if(Object.keys(clear).length) b.clear=clear;
+    return b;
+  };
+  wireTop(n,()=>go("open"));
+  $id("admSave").onclick=async()=>{
+    const t=$id("admPass").value.trim();
+    if(!t) return show("Enter your ADMIN_TOKEN first (set it in Netlify → Environment variables).", true);
+    const btn=$id("admSave"); btn.disabled=true; status("Saving…");
+    try{
+      const r=await fetch(cfgUrl,{method:"POST",headers:{"Content-Type":"application/json","x-admin-token":t},body:JSON.stringify(body())});
+      if(r.status===401){
+        status("Wrong ADMIN_TOKEN — the server rejected it.", true);
+        show("Check the ADMIN_TOKEN value in Netlify's dashboard.", true);
+      }else if(r.ok){
+        const j=await r.json().catch(()=>null);
+        status(j && j.ok ? "Saved. Visitors pick this up on their next visit." : "Saved, but no confirmation came back.");
+        $id("admPass").value=""; $id("admProv").dataset.prev=$id("admProv").value;
+        await load(); await AI.fetchConfig();
+      }else{
+        status("Save failed — HTTP "+r.status+".", true);
+      }
+    }catch(e){
+      status("Couldn't reach the server: "+e.message, true);
+    }
+    btn.disabled=false;
+  };
+  $id("admReload").onclick=async()=>{ await load(); status("Reloaded."); };
+  load();
+  return n;
 }
 
 /* ---------------------------------------------------------------
@@ -2201,19 +2369,39 @@ function openSettings(){
   body.innerHTML=`<div class="grip"></div><div class="stack lg">
     <div><h3 class="h3">Settings</h3>
       <p class="lede" style="margin-top:7px">Mediator: <b>${esc(AI.label())}</b> · Sync: <b>${esc(Net.label())}</b></p></div>
-    ${AI.serverUrl?`<div class="notice" style="padding:11px 13px">Cloud proxy is live — provider keys live in Netlify's environment variables, not in this browser.</div>`:""}
-    <div class="field"><span>Cloud proxy URL (optional)</span>
-      <input class="input" id="proxyIn" placeholder="https://your-site.netlify.app/.netlify/functions/ai">
-      <p class="tiny">Leave empty to use this site's own proxy. Set it on a copy hosted elsewhere (e.g. the Firebase dashboard) so it reuses Netlify's keys.</p></div>
-    <div class="field"><span>AI provider</span>
-      <select class="input" id="provIn">
-        <option value="groq">Groq</option>
-        <option value="openai">OpenAI · GPT-6 Astra</option>
-        <option value="gemini">Google Gemini</option>
-      </select>
-      <p class="tiny" id="provTip"></p></div>
-    <div class="field"><span>Listening &amp; voice accent</span>
-      <select class="input" id="accIn">
+    ${AI.hasConfig?`<div class="notice" style="padding:11px 13px">This app is configured by its host — provider, keys, safe-saving and two-device sync are all set for everyone. Nothing to add here.</div>`
+      :(AI.serverUrl?`<div class="notice" style="padding:11px 13px">Cloud proxy is live — provider keys live in Netlify's environment variables, not in this browser.</div>`:"")}
+    <div id="manualCfg" ${AI.hasConfig?"hidden":""}>
+      <div class="field"><span>Cloud proxy URL (optional)</span>
+        <input class="input" id="proxyIn" placeholder="https://your-site.netlify.app/.netlify/functions/ai">
+        <p class="tiny">Leave empty to use this site's own proxy. Set it on a copy hosted elsewhere (e.g. the Firebase dashboard) so it reuses Netlify's keys.</p></div>
+      <div class="field"><span>AI provider</span>
+        <select class="input" id="provIn">
+          <option value="groq">Groq</option>
+          <option value="openai">OpenAI · GPT-6 Astra</option>
+          <option value="gemini">Google Gemini</option>
+        </select>
+        <p class="tiny" id="provTip"></p></div>
+      <div class="field"><span>API key</span>
+        <input class="input" id="keyIn" type="password" placeholder="Paste the provider's API key here">
+        <p class="tiny">Stored in this browser only. Each provider keeps its own key.</p></div>
+      <div class="field"><span>Firebase Realtime Database URL</span>
+        <input class="input" id="fbIn" placeholder="https://your-project-default-rtdb.firebaseio.com" value="${esc(store.get("fb","")||"")}">
+        <p class="tiny">Turns on two-device rooms when hosted. Set the database rules to public read/write for the demo.</p></div>
+    </div>
+    <div id="managedCfg" ${AI.hasConfig?"":"hidden"}>
+      <div class="field"><span>Cloud proxy URL</span>
+        <input class="input" id="managedProxy" value="${esc(AI.configUrl?AI.configUrl.replace(/\/config$/,"/ai"):"")}" readonly>
+        <p class="tiny">Managed by the host.</p></div>
+      <div class="field"><span>AI provider</span>
+        <input class="input" id="managedProv" value="${esc(AI.cfg&&AI.cfg.provider?"Connected · "+AI.cfg.provider:"")}" readonly>
+        <p class="tiny">Managed by the host. The mediator falls back across all providers automatically.</p></div>
+      <div class="field"><span>Two-device sync</span>
+        <input class="input" id="managedFb" value="${esc((AI.cfg&&AI.cfg.firebaseUrl)?"On ("+AI.cfg.firebaseUrl+")":"Off")}" readonly>
+        <p class="tiny">Managed by the host.</p></div>
+    </div>
+    <div class="field"><span>Language &amp; voice</span>
+      <select class="input" id="langIn">
         <option value="auto">Auto (follow this browser)</option>
         <option value="en-US">English — US</option>
         <option value="en-GB">English — UK</option>
@@ -2221,26 +2409,23 @@ function openSettings(){
         <option value="en-NZ">English — New Zealand</option>
         <option value="en-CA">English — Canada</option>
         <option value="en-IN">English — India</option>
+        <option value="ml-IN">മലയാളം — Malayalam</option>
+        <option value="hi-IN">हिन्दी — Hindi</option>
       </select>
-      <p class="tiny">Used to recognise your voice and to pick the mediator's voice. Choose the accent closest to yours for the best results.</p></div>
-    <div class="field"><span>API key</span>
-      <input class="input" id="keyIn" type="password" placeholder="Paste the provider's API key here">
-      <p class="tiny">Stored in this browser only. Each provider keeps its own key.</p></div>
-    <div class="field"><span>Firebase Realtime Database URL</span>
-      <input class="input" id="fbIn" placeholder="https://your-project-default-rtdb.firebaseio.com" value="${esc(store.get("fb","")||"")}">
-      <p class="tiny">Turns on two-device rooms when hosted. Set the database rules to public read/write for the demo.</p></div>
+      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
     <button class="btn ghost" id="saveCfg">Save and reload</button>
     <button class="btn ghost" id="testBtn">Test the connection</button>
     <div class="notice" id="testOut" hidden></div>
     ${deferredInstall?`<button class="btn ghost" id="install">Install on this phone</button>`:
       `<p class="notice">To install: browser menu, then "Add to Home screen".</p>`}
+    <button class="btn ghost" id="hostBtn">Host settings (owner)</button>
     <button class="btn ghost" id="wipe">Clear this mediation</button>
     <button class="linkish" id="close" style="text-align:center">Close</button></div>`;
   sheet.classList.add("on");
   const close=()=>sheet.classList.remove("on");
   const provSel=$("#provIn",body), keyIn=$("#keyIn",body), keyTip=$("#provTip",body);
-  const accIn=$("#accIn",body);
-  accIn.value=store.get("accent","auto")||"auto";
+  const langIn=$("#langIn",body);
+  langIn.value=store.get("lang", null)||store.get("accent", null)||"auto";
   const proxyIn=$("#proxyIn",body);
   proxyIn.value = AI.proxyBase && !AI.proxyBase.startsWith("/") ? AI.proxyBase : "";
   const keys={groq:AI.keys.groq, openai:AI.keys.openai, gemini:AI.keys.gemini};
@@ -2262,26 +2447,30 @@ function openSettings(){
   $("#close",body).onclick=close;
   sheet.onclick=e=>{ if(e.target===sheet) close(); };
   $("#saveCfg",body).onclick=()=>{
-    const p=provSel.value, k=keyIn.value.trim(), f=$("#fbIn",body).value.trim().replace(/\/+$/,"");
-    const pr=proxyIn.value.trim().replace(/\/+$/,"");
-    keys[p]=k;
-    store.set("provider",p);
-    keys.groq?store.set("key_groq",keys.groq):store.del("key_groq");
-    keys.openai?store.set("key_openai",keys.openai):store.del("key_openai");
-    keys.gemini?store.set("key_gemini",keys.gemini):store.del("key_gemini");
-    store.del("key");
-    pr?store.set("proxy",pr):store.del("proxy");
-    store.set("accent", accIn.value.trim()||"auto");
-    f?store.set("fb",f):store.del("fb");
+    store.set("lang", langIn.value.trim()||"auto"); store.del("accent");
+    if(!AI.hasConfig){
+      const p=provSel.value, k=keyIn.value.trim(), f=$("#fbIn",body).value.trim().replace(/\/+$/,"");
+      const pr=proxyIn.value.trim().replace(/\/+$/,"");
+      keys[p]=k;
+      store.set("provider",p);
+      keys.groq?store.set("key_groq",keys.groq):store.del("key_groq");
+      keys.openai?store.set("key_openai",keys.openai):store.del("key_openai");
+      keys.gemini?store.set("key_gemini",keys.gemini):store.del("key_gemini");
+      store.del("key");
+      pr?store.set("proxy",pr):store.del("proxy");
+      f?store.set("fb",f):store.del("fb");
+    }
     try{ location.reload(); }catch(e){ close(); render(); }
   };
   $("#testBtn",body).onclick=async()=>{
     const out=$("#testOut",body), btn=$("#testBtn",body);
     out.hidden=false; out.className="notice"; out.textContent="Calling the mediator…";
     btn.disabled=true;
-    const p=provSel.value, k=keyIn.value.trim();
-    if(k && k!==AI.keys[p]){ AI.keys[p]=k; store.set("key_"+p,k); }
-    AI.provider=p; store.set("provider",p);
+    if(!AI.hasConfig && provSel){
+      const p=provSel.value, k=keyIn.value.trim();
+      if(k && k!==AI.keys[p]){ AI.keys[p]=k; store.set("key_"+p,k); }
+      AI.provider=p; store.set("provider",p);
+    }
     await AI.init();
     const r=await AI.test();
     btn.disabled=false;
@@ -2290,6 +2479,7 @@ function openSettings(){
       ? `<b style="color:var(--bloom)">Live.</b> ${esc(r.backend)} answered in ${r.ms}ms — "${esc(r.detail)}". Real replies from here on.`
       : `<b style="color:var(--ember)">Not connected.</b> ${esc(r.backend)} said: ${esc(r.detail)}<br><br>Most common causes: the API key isn't enabled on that provider's project, the key has an HTTP-referrer restriction that blocks this site, or the key was pasted with a stray space.`;
   };
+  $("#hostBtn",body).onclick=()=>{ close(); go("admin"); };
   const ins=$("#install",body); if(ins) ins.onclick=()=>{ close(); deferredInstall.prompt(); deferredInstall=null; };
   $("#wipe",body).onclick=()=>{ close(); reset(); };
 }
@@ -2308,7 +2498,8 @@ function reset(){
    --------------------------------------------------------------- */
 (async function boot(){
   render();
-  await Promise.all([AI.init(), Net.init()]);
+  await AI.init();            // also fetches the host config the owner set
+  await Net.init();
   const prev = store.get("last", null);
   if(prev && prev.stage && prev.stage!=="open" && prev.a?.name){
     Object.assign(S, prev);
