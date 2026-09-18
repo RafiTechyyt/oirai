@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Obviously, I'm Right</title>
+<meta name="description" content="A two-sided AI mediator. Both people speak privately. Nobody gets declared the winner.">
+<meta name="theme-color" content="#0B0813">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Obviously%2C%20I%27m%20Right","short_name":"Obviously","start_url":".","display":"standalone","background_color":"%230B0813","theme_color":"%230B0813","orientation":"portrait","description":"A two-sided AI mediator.","icons":[{"src":"data:image/svg%2Bxml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27%3E%3Crect width=%27192%27 height=%27192%27 rx=%2742%27 fill=%27%230B0813%27/%3E%3Ccircle cx=%2774%27 cy=%2796%27 r=%2734%27 fill=%27%23FFB347%27 opacity=%27.85%27/%3E%3Ccircle cx=%27118%27 cy=%2796%27 r=%2734%27 fill=%27%238B7BF7%27 opacity=%27.85%27/%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml","purpose":"any"}]}'>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B0813'/%3E%3Ccircle cx='25' cy='32' r='12' fill='%23FFB347' opacity='.85'/%3E%3Ccircle cx='39' cy='32' r='12' fill='%238B7BF7' opacity='.85'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   OBVIOUSLY, I'M RIGHT — design system
+   A is ember. B is iris. Agreement is the colour they blend into.
+   ============================================================ */
+:root{
+  --ink:#0B0813;
+  --ink-2:#14101F;
+  --ink-3:#1D1730;
+  --hair:rgba(242,238,249,.10);
+  --hair-2:rgba(242,238,249,.055);
+  --chalk:#F2EEF9;
+  --mist:#A79FBC;
+  --mist-dim:#6F6788;
+
+  --ember:#FFB347;      /* person A */
+  --ember-deep:#C97B1E;
+  --iris:#8B7BF7;       /* person B */
+  --iris-deep:#5C48C7;
+  --bloom:#FF6FB5;      /* both / agreement */
+  --bloom-deep:#C43C82;
+
+  --ember-wash:rgba(255,179,71,.10);
+  --iris-wash:rgba(139,123,247,.10);
+  --bloom-wash:rgba(255,111,181,.10);
+
+  --r-sm:10px; --r-md:16px; --r-lg:24px; --r-xl:34px;
+  --shell:min(560px,100%);
+  --ease:cubic-bezier(.22,.68,.32,1);
+  --pad:clamp(20px,5vw,32px);
+}
+:root:not([data-theme="light"]){ color-scheme:dark; }
+:root[data-theme="light"]{
+  /* the chamber stays dim on purpose; light mode only lifts it slightly */
+  --ink:#151021; --ink-2:#1E1830; --ink-3:#2A2140;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--ink);
+  color:var(--chalk);
+  font-family:"Manrope",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+  -webkit-tap-highlight-color:transparent;
+}
+h1,h2,h3{
+  font-family:"Fraunces","Iowan Old Style",Georgia,serif;
+  font-weight:500; line-height:1.12; letter-spacing:-.015em;
+  font-variation-settings:"SOFT" 40,"WONK" 1;
+  margin:0;
+}
+p{margin:0}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none;padding:0}
+:focus-visible{outline:2px solid var(--bloom);outline-offset:3px;border-radius:6px}
+::selection{background:var(--bloom);color:var(--ink)}
+
+/* ---------- backdrop ---------- */
+#sky{position:fixed;inset:0;z-index:0;display:block;width:100%;height:100%}
+.vignette{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(120% 75% at 50% 42%,transparent 40%,rgba(11,8,19,.62) 78%,var(--ink) 100%);
+}
+.grain{
+  position:fixed;inset:-50%;z-index:2;pointer-events:none;opacity:.028;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- stage shell ---------- */
+#app{position:relative;z-index:3;min-height:100dvh;display:flex;flex-direction:column}
+.stage{
+  display:none; flex:1 1 auto; flex-direction:column;
+  width:var(--shell); margin:0 auto; padding:0 var(--pad);
+  padding-top:max(20px,env(safe-area-inset-top));
+  padding-bottom:max(24px,env(safe-area-inset-bottom));
+}
+.stage.on{display:flex;animation:enter .5s var(--ease) both}
+@keyframes enter{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.grow{flex:1 1 auto;min-height:0}
+.center{justify-content:center}
+
+/* ---------- typography scale ---------- */
+.display{font-size:clamp(40px,11.5vw,66px);letter-spacing:-.03em}
+.display em{font-style:italic;font-variation-settings:"SOFT" 80,"WONK" 1}
+.h2{font-size:clamp(26px,6.6vw,34px)}
+.h3{font-size:clamp(19px,4.6vw,23px)}
+.lede{color:var(--mist);font-size:clamp(15px,3.9vw,17px);line-height:1.62;max-width:46ch}
+.tiny{font-size:13px;color:var(--mist-dim);line-height:1.5}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- opening ---------- */
+.orbwrap{position:relative;height:min(38dvh,300px);margin:0 auto 6px;width:100%}
+.opening-copy{text-align:center;display:grid;gap:18px;justify-items:center}
+.tagline{
+  font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:clamp(16px,4.3vw,19px);
+  color:var(--mist);line-height:1.45;max-width:24ch;
+}
+.tagline b{color:var(--chalk);font-weight:400;font-style:normal}
+
+/* ---------- buttons ---------- */
+.btn{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  padding:16px 26px;border-radius:999px;font-weight:600;font-size:16px;letter-spacing:-.01em;
+  background:var(--chalk);color:#120D1C;transition:transform .18s var(--ease),box-shadow .25s var(--ease),opacity .2s;
+  box-shadow:0 8px 30px -12px rgba(255,111,181,.55);
+  width:100%;
+}
+.btn:active{transform:scale(.975)}
+.btn[disabled]{opacity:.32;pointer-events:none;box-shadow:none}
+.btn.ghost{background:transparent;color:var(--chalk);box-shadow:inset 0 0 0 1px var(--hair)}
+.btn.bloom{background:linear-gradient(104deg,var(--ember),var(--bloom) 52%,var(--iris));color:#160E18}
+.btn.a{background:var(--ember);color:#241502}
+.btn.b{background:var(--iris);color:#F6F3FF}
+.btn.sm{padding:11px 18px;font-size:14px;width:auto}
+.btnrow{display:flex;gap:10px;align-items:center}
+.btnrow .btn{width:auto;flex:1}
+.linkish{color:var(--mist);font-size:14px;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--hair);padding:8px}
+.linkish:hover{color:var(--chalk)}
+
+/* ---------- cards / surfaces ---------- */
+.card{
+  background:linear-gradient(176deg,rgba(242,238,249,.05),rgba(242,238,249,.018));
+  border:1px solid var(--hair); border-radius:var(--r-lg); padding:20px;
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+}
+.card.a{border-color:rgba(255,179,71,.26);background:linear-gradient(176deg,var(--ember-wash),rgba(255,179,71,.02))}
+.card.b{border-color:rgba(139,123,247,.28);background:linear-gradient(176deg,var(--iris-wash),rgba(139,123,247,.02))}
+.card.bloom{border-color:rgba(255,111,181,.3);background:linear-gradient(176deg,var(--bloom-wash),rgba(255,111,181,.02))}
+.stack{display:grid;gap:14px}
+.stack.lg{gap:22px}
+.stack.sm{gap:9px}
+
+/* ---------- inputs ---------- */
+.field{display:grid;gap:8px}
+.field > span{font-size:13.5px;color:var(--mist);font-weight:500}
+.input,.ta{
+  width:100%;background:rgba(242,238,249,.045);border:1px solid var(--hair);
+  border-radius:var(--r-md);padding:14px 16px;color:var(--chalk);
+  transition:border-color .2s,background .2s;
+}
+.input::placeholder,.ta::placeholder{color:var(--mist-dim)}
+.input:focus,.ta:focus{outline:none;border-color:var(--bloom);background:rgba(242,238,249,.07)}
+.ta{resize:none;min-height:116px;line-height:1.55}
+.field.a .input:focus,.field.a .ta:focus{border-color:var(--ember)}
+.field.b .input:focus,.field.b .ta:focus{border-color:var(--iris)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  padding:9px 14px;border-radius:999px;border:1px solid var(--hair);
+  font-size:14px;color:var(--mist);transition:all .18s var(--ease);background:rgba(242,238,249,.02);
+}
+.chip[aria-pressed="true"]{background:var(--chalk);color:#120D1C;border-color:transparent;font-weight:600}
+
+/* ---------- who-bar ---------- */
+.whobar{display:flex;align-items:center;gap:10px;padding:10px 4px 2px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.a{background:var(--ember);box-shadow:0 0 14px var(--ember)}
+.dot.b{background:var(--iris);box-shadow:0 0 14px var(--iris)}
+.dot.bloom{background:var(--bloom);box-shadow:0 0 14px var(--bloom)}
+.whobar .name{font-weight:600;font-size:14.5px}
+.whobar .meta{margin-left:auto;font-size:12.5px;color:var(--mist-dim)}
+
+/* ---------- conversation ---------- */
+.convo{display:flex;flex-direction:column;gap:16px;padding:14px 0 8px;overflow-y:auto;flex:1 1 auto;min-height:0;scrollbar-width:thin}
+.convo::-webkit-scrollbar{width:4px}
+.convo::-webkit-scrollbar-thumb{background:var(--hair);border-radius:4px}
+.turn{max-width:92%;animation:enter .42s var(--ease) both}
+.turn.ai{align-self:flex-start}
+.turn.me{align-self:flex-end;max-width:85%}
+.bubble{padding:15px 18px;border-radius:20px;font-size:15.5px;line-height:1.58}
+.turn.ai .bubble{
+  background:rgba(242,238,249,.055);border:1px solid var(--hair);border-bottom-left-radius:7px;
+}
+.turn.me .bubble{border-bottom-right-radius:7px;font-weight:500}
+.turn.me.a .bubble{background:rgba(255,179,71,.15);border:1px solid rgba(255,179,71,.3)}
+.turn.me.b .bubble{background:rgba(139,123,247,.16);border:1px solid rgba(139,123,247,.32)}
+.turn .who{font-size:11.5px;color:var(--mist-dim);margin:0 0 6px 4px;letter-spacing:.02em}
+.turn.me .who{text-align:right;margin:0 4px 6px 0}
+
+.thinking{display:inline-flex;gap:5px;align-items:center;padding:16px 20px}
+.thinking i{width:6px;height:6px;border-radius:50%;background:var(--mist);animation:pulse 1.25s var(--ease) infinite}
+.thinking i:nth-child(2){animation-delay:.16s}
+.thinking i:nth-child(3){animation-delay:.32s}
+@keyframes pulse{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+
+.composer{display:flex;gap:9px;align-items:flex-end;padding-top:10px;border-top:1px solid var(--hair-2)}
+.composer .ta{min-height:54px;max-height:150px;border-radius:20px;padding:15px 17px}
+.iconbtn{
+  width:52px;height:52px;flex:none;border-radius:50%;display:grid;place-items:center;
+  background:rgba(242,238,249,.06);border:1px solid var(--hair);transition:all .2s var(--ease);
+}
+.iconbtn svg{width:21px;height:21px}
+.iconbtn.go{background:var(--chalk);border-color:transparent;color:#120D1C}
+.iconbtn.go[disabled]{opacity:.3}
+.iconbtn.rec[aria-pressed="true"]{background:var(--bloom);border-color:transparent;color:#160E18;animation:mic 1.6s ease-in-out infinite}
+@keyframes mic{0%,100%{box-shadow:0 0 0 0 rgba(255,111,181,.5)}50%{box-shadow:0 0 0 12px rgba(255,111,181,0)}}
+
+/* progress rail */
+.rail{height:2px;background:var(--hair-2);border-radius:2px;overflow:hidden;margin:4px 0 0}
+.rail i{display:block;height:100%;width:0%;border-radius:2px;transition:width .6s var(--ease)}
+.rail.a i{background:linear-gradient(90deg,var(--ember-deep),var(--ember))}
+.rail.b i{background:linear-gradient(90deg,var(--iris-deep),var(--iris))}
+
+/* ---------- seal / handoff ---------- */
+.seal{display:grid;place-items:center;gap:26px;text-align:center;flex:1}
+.sealmark{
+  width:124px;height:124px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:radial-gradient(circle at 50% 38%,rgba(255,111,181,.22),transparent 68%);
+}
+.sealmark::before,.sealmark::after{
+  content:"";position:absolute;inset:0;border-radius:50%;border:1px solid var(--hair);
+}
+.sealmark::after{animation:ripple 3.4s var(--ease) infinite}
+@keyframes ripple{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+.sealmark svg{width:44px;height:44px;color:var(--bloom)}
+
+/* ---------- findings ---------- */
+.findings{padding-bottom:40px;overflow-y:auto;flex:1;min-height:0}
+.sect{margin:34px 0 0}
+.sect > .h3{margin-bottom:6px}
+.sect > .lede{margin-bottom:14px;font-size:14.5px}
+.headline{
+  font-family:"Fraunces",Georgia,serif;font-size:clamp(21px,5.4vw,26px);line-height:1.28;
+  font-style:italic;font-variation-settings:"SOFT" 80,"WONK" 1;
+}
+
+.split{display:grid;gap:12px}
+@media(min-width:520px){.split{grid-template-columns:1fr 1fr}}
+.side-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:9px}
+.side-label.a{color:var(--ember)} .side-label.b{color:var(--iris)}
+
+.tag{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:13px;line-height:1.35;border:1px solid var(--hair);background:rgba(242,238,249,.035)}
+.tag.fact{border-color:rgba(255,111,181,.28);background:rgba(255,111,181,.07)}
+.tag.feel{border-color:rgba(255,179,71,.3);background:rgba(255,179,71,.07)}
+.tag.assume{border-color:rgba(139,123,247,.32);background:rgba(139,123,247,.08)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--mist-dim);margin-bottom:12px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:3px;display:inline-block}
+
+/* truth map */
+.tm{display:grid;gap:10px}
+.tmrow{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:start;padding:13px 15px;border-radius:var(--r-md);border:1px solid var(--hair);background:rgba(242,238,249,.025)}
+.tmrow[data-k="agreed"]{border-color:rgba(255,111,181,.3);background:rgba(255,111,181,.055)}
+.tmrow[data-k="disputed"]{border-color:rgba(255,179,71,.3);background:rgba(255,179,71,.045)}
+.tmpin{width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--mist-dim)}
+.tmrow[data-k="agreed"] .tmpin{background:var(--bloom);box-shadow:0 0 12px var(--bloom)}
+.tmrow[data-k="disputed"] .tmpin{background:var(--ember);box-shadow:0 0 12px var(--ember)}
+.tmrow .what{font-size:14.5px;line-height:1.5}
+.tmrow .vs{margin-top:9px;display:grid;gap:7px;font-size:13px;color:var(--mist)}
+.tmrow .vs div{padding-left:11px;border-left:2px solid var(--hair)}
+.tmrow .vs div.a{border-color:var(--ember)}
+.tmrow .vs div.b{border-color:var(--iris)}
+
+/* contribution arcs */
+.arcs{display:flex;gap:18px;align-items:center;justify-content:center;flex-wrap:wrap}
+.arc{display:grid;place-items:center;gap:8px}
+.arc svg{width:118px;height:118px;transform:rotate(-90deg)}
+.arc .ring-bg{fill:none;stroke:var(--hair);stroke-width:9}
+.arc .ring{fill:none;stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset 1.3s var(--ease)}
+.arc.a .ring{stroke:var(--ember)} .arc.b .ring{stroke:var(--iris)}
+.arc .val{position:absolute;font-family:"Fraunces",serif;font-size:27px}
+.arcbox{position:relative;display:grid;place-items:center}
+.arc .cap{font-size:13px;color:var(--mist);text-align:center;max-width:15ch}
+
+/* ledger */
+.ledger{display:grid;gap:9px;font-size:13.5px}
+.lrow{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hair-2)}
+.lrow:last-child{border:0}
+.lrow .lk{color:var(--mist)}
+.lrow .lv{font-variant-numeric:tabular-nums;font-weight:600;min-width:46px;text-align:right}
+.lrow .lv.a{color:var(--ember)} .lrow .lv.b{color:var(--iris)}
+.balance{height:6px;border-radius:4px;background:linear-gradient(90deg,var(--ember),var(--bloom),var(--iris));position:relative;margin-top:6px}
+.balance i{position:absolute;top:-4px;width:3px;height:14px;background:var(--chalk);border-radius:2px;transition:left 1s var(--ease);box-shadow:0 0 10px rgba(255,255,255,.7)}
+
+/* pact */
+.pactitem{display:grid;grid-template-columns:auto 1fr;gap:13px;padding:15px;border-radius:var(--r-md);border:1px solid var(--hair);background:rgba(242,238,249,.028)}
+.pactnum{font-family:"Fraunces",serif;font-size:19px;color:var(--bloom);line-height:1.2}
+.sigrow{display:grid;gap:10px}
+@media(min-width:480px){.sigrow{grid-template-columns:1fr 1fr}}
+.sig{
+  padding:18px;border-radius:var(--r-md);border:1px dashed var(--hair);text-align:center;
+  transition:all .3s var(--ease);
+}
+.sig[aria-pressed="true"]{border-style:solid}
+.sig.a[aria-pressed="true"]{border-color:var(--ember);background:var(--ember-wash)}
+.sig.b[aria-pressed="true"]{border-color:var(--iris);background:var(--iris-wash)}
+.sig .nm{font-family:"Fraunces",serif;font-size:19px;font-style:italic}
+.sig .st{font-size:12.5px;color:var(--mist-dim);margin-top:4px}
+
+/* synthesis */
+.synth{display:grid;place-items:center;gap:20px;text-align:center;flex:1}
+.synthsteps{display:grid;gap:11px;width:100%;max-width:340px;text-align:left}
+.sstep{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;font-size:14px;color:var(--mist-dim);transition:color .4s}
+.sstep.on{color:var(--chalk)}
+.sstep.done{color:var(--mist)}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--hair);transition:all .4s}
+.sstep.on .sdot{background:var(--bloom);box-shadow:0 0 12px var(--bloom);transform:scale(1.35)}
+.sstep.done .sdot{background:var(--mist-dim)}
+
+/* misc */
+.notice{font-size:13px;padding:12px 15px;border-radius:var(--r-md);border:1px solid var(--hair);background:rgba(242,238,249,.03);color:var(--mist);line-height:1.5}
+.notice.warn{border-color:rgba(255,179,71,.32);background:rgba(255,179,71,.06)}
+.topbar{display:flex;align-items:center;gap:12px;padding:6px 0 14px}
+.topbar .t{font-size:13.5px;color:var(--mist);font-weight:500}
+.topbar .sp{margin-left:auto}
+.back{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--hair);color:var(--mist)}
+.back svg{width:17px;height:17px}
+.sheet{position:fixed;inset:0;z-index:40;display:none;place-items:end center;background:rgba(6,4,11,.7);backdrop-filter:blur(6px)}
+.sheet.on{display:grid;animation:fade .3s var(--ease)}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheetbody{width:var(--shell);max-height:88dvh;overflow-y:auto;background:var(--ink-2);border:1px solid var(--hair);border-bottom:0;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:26px var(--pad) max(30px,env(safe-area-inset-bottom));animation:up .38s var(--ease) both}
+@keyframes up{from{transform:translateY(40px)}to{transform:none}}
+.grip{width:38px;height:4px;border-radius:3px;background:var(--hair);margin:0 auto 18px}
+
+/* ---------- voice mode ---------- */
+.voice{display:flex;flex-direction:column;flex:1;min-height:0}
+.voicestage{flex:1;display:grid;place-items:center;position:relative;min-height:0}
+.vorb{position:relative;width:min(62vw,240px);aspect-ratio:1;display:grid;place-items:center}
+.vorb canvas{width:100%;height:100%;display:block}
+.vstate{
+  position:absolute;bottom:-34px;left:50%;transform:translateX(-50%);white-space:nowrap;
+  font-size:13px;color:var(--mist-dim);letter-spacing:.01em;transition:color .3s;
+}
+.vstate.live{color:var(--bloom)}
+.caption{
+  padding:20px 4px 12px;text-align:center;font-size:clamp(17px,4.6vw,21px);line-height:1.45;
+  font-family:"Fraunces",Georgia,serif;font-weight:400;min-height:5.2em;
+  display:flex;align-items:center;justify-content:center;
+}
+.caption.user{font-family:"Manrope",sans-serif;font-size:16px;color:var(--mist);font-style:italic}
+.vctl{display:flex;gap:14px;align-items:center;justify-content:center;padding:8px 0 4px}
+.vbtn{
+  width:62px;height:62px;border-radius:50%;display:grid;place-items:center;
+  border:1px solid var(--hair);background:rgba(242,238,249,.05);transition:all .22s var(--ease);
+}
+.vbtn svg{width:23px;height:23px}
+.vbtn.main{width:76px;height:76px;background:var(--chalk);color:#120D1C;border-color:transparent}
+.vbtn.main[data-live="1"]{background:var(--bloom);color:#160E18}
+.vbtn[disabled]{opacity:.3;pointer-events:none}
+.vbtn.sm{width:48px;height:48px}
+.vbtn.sm svg{width:19px;height:19px}
+
+.transcript{max-height:34dvh;overflow-y:auto;padding:4px 0}
+.tline{font-size:14px;line-height:1.55;padding:7px 0;border-bottom:1px solid var(--hair-2)}
+.tline b{font-weight:600}
+.tline.a b{color:var(--ember)} .tline.b b{color:var(--iris)} .tline.ai b{color:var(--bloom)}
+
+/* ---------- room code ---------- */
+.code{
+  font-family:"Fraunces",Georgia,serif;font-size:clamp(38px,12vw,58px);letter-spacing:.14em;
+  text-align:center;color:var(--bloom);line-height:1.1;
+}
+.codein{
+  width:100%;text-align:center;font-family:"Fraunces",Georgia,serif;font-size:34px;letter-spacing:.2em;
+  text-transform:uppercase;background:rgba(242,238,249,.045);border:1px solid var(--hair);
+  border-radius:var(--r-md);padding:16px;color:var(--chalk);
+}
+.codein:focus{outline:none;border-color:var(--bloom)}
+.waiting{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mist)}
+.waiting i{width:7px;height:7px;border-radius:50%;background:var(--bloom);animation:pulse 1.3s infinite}
+
+/* ---------- satisfaction ---------- */
+.satrow{display:grid;gap:11px}
+@media(min-width:480px){.satrow{grid-template-columns:1fr 1fr}}
+.satbtn{padding:20px 16px;border-radius:var(--r-md);border:1px solid var(--hair);text-align:center;transition:all .25s var(--ease)}
+.satbtn .ic{font-size:22px;line-height:1}
+.satbtn .lb{font-size:14.5px;font-weight:600;margin-top:8px}
+.satbtn .sb{font-size:12.5px;color:var(--mist-dim);margin-top:3px}
+.satbtn[aria-pressed="true"].yes{border-color:var(--bloom);background:var(--bloom-wash)}
+.satbtn[aria-pressed="true"].no{border-color:var(--ember);background:var(--ember-wash)}
+.roundpill{
+  display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;
+  border:1px solid var(--hair);font-size:12px;color:var(--mist);
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+<div id="app"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"><div class="sheetbody" id="sheetbody"></div></div>
+<script>
+/* ================================================================
+   OBVIOUSLY, I'M RIGHT — two-sided AI conflict mediation
+   ================================================================ */
+"use strict";
+
+const $ = (s,r=document)=>r.querySelector(s);
+const app = $("#app");
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const wait = ms => new Promise(r=>setTimeout(r,ms));
+const words = s => (String(s||"").trim().match(/\S+/g)||[]).length;
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+const ICON = {
+  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  mic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2.5"/></svg>',
+  kbd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/></svg>',
+  wave:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7.5 8v8M12 5v14M16.5 8v8M21 12h-2"/></svg>',
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  cog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.6M12 18.8v2.6M21.4 12h-2.6M5.2 12H2.6M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8M18.6 18.6l-1.8-1.8M7.2 7.2L5.4 5.4"/></svg>',
+  mute:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M17 9l4 6M21 9l-4 6"/></svg>',
+  vol:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>'
+};
+
+/* ---------------------------------------------------------------
+   1. STATE
+   --------------------------------------------------------------- */
+const blankSide = ()=>({name:"",turns:[],done:false,qCount:0,satisfied:null,rebuttal:""});
+const S = {
+  stage:"open", room:null, seat:null,      // seat: 'a' | 'b' | null (same device)
+  mode:"solo",                             // 'solo' (pass the phone) | 'pair' (two devices)
+  a:blankSide(), b:blankSide(),
+  relation:"", topic:"",
+  report:null, cross:null, round:1,
+  signed:{a:false,b:false},
+  voice:true
+};
+const MAXQ = 6, MAXROUNDS = 3;
+const RELATIONS = ["Partners","Friends","Parent & child","Siblings","Housemates","Teammates","Something else"];
+
+const store = {
+  get(k,d=null){ try{ const v=localStorage.getItem("oir:"+k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem("oir:"+k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem("oir:"+k); }catch(e){} }
+};
+function save(){ store.set("last", S); Net.push(); }
+
+/* ---------------------------------------------------------------
+   2. THE SKY — two particle spheres, hand-rolled 3D.
+   Reacts to who is speaking: level drives the pulse.
+   --------------------------------------------------------------- */
+const Sky = (()=>{
+  const cv = $("#sky"), cx = cv.getContext("2d");
+  let W=0,H=0,DPR=1,pts=[],t=0;
+  let merge=0,tMerge=0, energy=0,tEnergy=0, level=0,tLevel=0, focus=0,tFocus=0;
+  const N = window.matchMedia("(max-width:520px)").matches ? 290 : 440;
+  const reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+  const EMBER=[255,179,71], IRIS=[139,123,247], BLOOM=[255,111,181];
+
+  for(let side=0; side<2; side++) for(let i=0;i<N;i++){
+    const k=i+.5, phi=Math.acos(1-2*k/N), th=Math.PI*(1+Math.sqrt(5))*k, r=1+(Math.random()-.5)*.13;
+    const p={side,x:Math.sin(phi)*Math.cos(th)*r,y:Math.sin(phi)*Math.sin(th)*r,z:Math.cos(phi)*r,
+             mx:Math.random()-.5,my:Math.random()-.5,mz:Math.random()-.5,tw:Math.random()*6.28};
+    const d=Math.hypot(p.mx,p.my,p.mz)||1, rr=.55+Math.random()*.7;
+    p.mx=p.mx/d*rr; p.my=p.my/d*rr; p.mz=p.mz/d*rr;
+    pts.push(p);
+  }
+  function resize(){ DPR=Math.min(devicePixelRatio||1,2); W=cv.clientWidth; H=cv.clientHeight;
+    cv.width=W*DPR; cv.height=H*DPR; cx.setTransform(DPR,0,0,DPR,0,0); }
+  const mix=(c1,c2,f)=>[c1[0]+(c2[0]-c1[0])*f,c1[1]+(c2[1]-c1[1])*f,c1[2]+(c2[2]-c1[2])*f];
+
+  function frame(){
+    t += reduce?0:.0042;
+    merge+=(tMerge-merge)*.028; energy+=(tEnergy-energy)*.05;
+    level+=(tLevel-level)*.22; focus+=(tFocus-focus)*.05;
+    cx.clearRect(0,0,W,H);
+    const cxp=W/2, cyp=H*(0.42-focus*0.04);
+    const scale=Math.min(W,H)*(0.30+energy*.05+level*.055);
+    const sep=(1-merge)*0.78;
+    const orbit=t*0.55, ca=Math.cos(orbit), sa=Math.sin(orbit);
+    const spin=t*(0.8+level*1.5), cs=Math.cos(spin), ss=Math.sin(spin);
+    const tilt=Math.sin(t*0.4)*0.28, ct=Math.cos(tilt), st=Math.sin(tilt);
+    const buf=[];
+    for(const p of pts){
+      let x=p.x+(p.mx-p.x)*merge, y=p.y+(p.my-p.y)*merge, z=p.z+(p.mz-p.z)*merge;
+      const bump = 1 + level*0.22*Math.sin(t*9+p.tw);
+      x*=bump; y*=bump; z*=bump;
+      const x1=x*cs-z*ss, z1=x*ss+z*cs;
+      const y1=y*ct-z1*st, z2=y*st+z1*ct;
+      const off=(p.side===0?-sep:sep);
+      const ox=x1+off, fx=ox*ca-z2*sa, fz=ox*sa+z2*ca;
+      const fy=y1+Math.sin(t*1.1+p.tw)*.035;
+      const d=3.4, per=d/(d-fz); if(per<=0) continue;
+      buf.push({sx:cxp+fx*scale*per, sy:cyp+fy*scale*per, fz, per, side:p.side, tw:p.tw});
+    }
+    buf.sort((m,n)=>m.fz-n.fz);
+    for(const b of buf){
+      const depth=(b.fz+1.9)/3.8;
+      const col=mix(b.side===0?EMBER:IRIS, BLOOM, merge*0.82);
+      const tw=.62+.38*Math.sin(t*2.4+b.tw);
+      const alpha=(0.10+depth*0.5)*tw*(0.5+energy*0.5)*(1+level*.5);
+      cx.beginPath(); cx.arc(b.sx,b.sy,(0.55+depth*1.5)*b.per*(1+energy*.35+level*.5),0,6.2832);
+      cx.fillStyle=`rgba(${col[0]|0},${col[1]|0},${col[2]|0},${clamp(alpha,0,1).toFixed(3)})`; cx.fill();
+    }
+    if(merge<.9){
+      const g=cx.createLinearGradient(cxp-scale*sep,cyp,cxp+scale*sep,cyp);
+      g.addColorStop(0,`rgba(255,179,71,${(1-merge)*.16})`);
+      g.addColorStop(.5,`rgba(255,111,181,${(1-merge)*.26})`);
+      g.addColorStop(1,`rgba(139,123,247,${(1-merge)*.16})`);
+      cx.strokeStyle=g; cx.lineWidth=1; cx.beginPath();
+      cx.moveTo(cxp-scale*sep,cyp); cx.lineTo(cxp+scale*sep,cyp); cx.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  resize(); frame(); addEventListener("resize",resize);
+  return {
+    setMerge:v=>tMerge=clamp(v,0,1), setEnergy:v=>tEnergy=clamp(v,0,1),
+    setLevel:v=>tLevel=clamp(v,0,1), setFocus:v=>tFocus=clamp(v,0,1)
+  };
+})();
+Sky.setEnergy(1);
+
+/* ---------------------------------------------------------------
+   3. SPEAK — the AI's voice.
+   Sentences are queued as they stream in, so it starts talking
+   before the sentence after it has been written.
+   --------------------------------------------------------------- */
+const Speak = (()=>{
+  const synth = window.speechSynthesis;
+  let voice=null, queue=[], speaking=false, enabled=true, onDone=null, tail="";
+  let levelTimer=null;
+
+  function pick(){
+    if(!synth) return;
+    const vs = synth.getVoices(); if(!vs.length) return;
+    const want = [
+      v=>/en-(IN|GB|US)/i.test(v.lang) && /natural|neural|google|premium|enhanced/i.test(v.name),
+      v=>/en-IN/i.test(v.lang),
+      v=>/en/i.test(v.lang) && /google|samantha|karen|daniel|aaron/i.test(v.name),
+      v=>/^en/i.test(v.lang)
+    ];
+    for(const f of want){ const m=vs.find(f); if(m){ voice=m; return; } }
+    voice = vs[0];
+  }
+  if(synth){ pick(); synth.onvoiceschanged = pick; }
+
+  function fakeLevel(on){
+    clearInterval(levelTimer);
+    if(!on){ Sky.setLevel(0); return; }
+    levelTimer = setInterval(()=>Sky.setLevel(0.25+Math.random()*0.55), 110);
+  }
+
+  function drain(){
+    if(!synth || !enabled || speaking) return;
+    const next = queue.shift();
+    if(next===undefined){ speaking=false; fakeLevel(false); onDone&&onDone(); onDone=null; return; }
+    if(!next.trim()) return drain();
+    speaking=true; fakeLevel(true);
+    const u = new SpeechSynthesisUtterance(next);
+    if(voice) u.voice=voice;
+    u.lang = voice?.lang || "en-IN";
+    u.rate = 1.02; u.pitch = 1.0; u.volume = 1;
+    u.onend = u.onerror = ()=>{ speaking=false; drain(); };
+    try{ synth.speak(u); }catch(e){ speaking=false; drain(); }
+  }
+
+  return {
+    get enabled(){ return enabled; },
+    set enabled(v){ enabled=v; store.set("tts",v); if(!v) this.cancel(); },
+    ready(){ return !!synth; },
+    /* feed the whole answer so far; only complete new sentences are spoken */
+    feed(full){
+      if(!enabled||!synth) return;
+      const fresh = full.slice(tail.length);
+      if(!fresh) return;
+      const parts = fresh.split(/(?<=[.!?…])\s+/);
+      const last = parts[parts.length-1];
+      const complete = /[.!?…]\s*$/.test(fresh) ? parts : parts.slice(0,-1);
+      if(complete.length){
+        complete.forEach(p=>queue.push(p));
+        tail = full.slice(0, tail.length + fresh.length - (/[.!?…]\s*$/.test(fresh)?0:last.length));
+        drain();
+      }
+    },
+    flush(full,cb){
+      if(!enabled||!synth){ cb&&cb(); return; }
+      const rest = full.slice(tail.length).trim();
+      if(rest) queue.push(rest);
+      tail = full; onDone = cb;
+      if(!speaking) drain(); else if(!queue.length){ /* will fire on end */ }
+    },
+    reset(){ tail=""; queue=[]; },
+    cancel(){ queue=[]; tail=""; speaking=false; onDone=null; fakeLevel(false); try{ synth&&synth.cancel(); }catch(e){} },
+    get busy(){ return speaking || queue.length>0; }
+  };
+})();
+Speak.enabled = store.get("tts", true);
+
+/* ---------------------------------------------------------------
+   4. EARS — listening, with silence detection and a live level.
+   This is what makes it a conversation instead of a form.
+   --------------------------------------------------------------- */
+const Ears = (()=>{
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec=null, listening=false, finalText="", interim="";
+  let onPartial=null, onFinal=null, silence=null, stream=null, ac=null, an=null, raf=null;
+
+  const supported = ()=>!!SR;
+
+  async function meter(on){
+    if(!on){
+      cancelAnimationFrame(raf);
+      try{ stream&&stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      try{ ac&&ac.close(); }catch(e){}
+      stream=ac=an=null; Sky.setLevel(0); return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      ac = new (window.AudioContext||window.webkitAudioContext)();
+      const src = ac.createMediaStreamSource(stream);
+      an = ac.createAnalyser(); an.fftSize=512; src.connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount);
+      const tick = ()=>{
+        if(!an) return;
+        an.getByteTimeDomainData(buf);
+        let sum=0; for(let i=0;i<buf.length;i++){ const d=(buf[i]-128)/128; sum+=d*d; }
+        Sky.setLevel(clamp(Math.sqrt(sum/buf.length)*4.5,0,1));
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+    }catch(e){ /* no mic permission — captions still work, orb just stays calm */ }
+  }
+
+  function armSilence(ms){
+    clearTimeout(silence);
+    silence = setTimeout(()=>{ if(listening && (finalText+interim).trim()) stop(true); }, ms);
+  }
+
+  function start({partial, final, pauseMs=2200}={}){
+    if(!SR || listening) return false;
+    onPartial=partial; onFinal=final; finalText=""; interim="";
+    rec = new SR();
+    rec.continuous = true; rec.interimResults = true;
+    rec.lang = navigator.language && /^en/.test(navigator.language) ? navigator.language : "en-IN";
+    rec.onresult = e=>{
+      interim="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const r=e.results[i];
+        if(r.isFinal) finalText += r[0].transcript + " "; else interim += r[0].transcript;
+      }
+      onPartial && onPartial((finalText+interim).trim());
+      armSilence(pauseMs);
+    };
+    rec.onerror = ev=>{ if(ev.error==="no-speech"){ armSilence(pauseMs); return; } stop(false); };
+    rec.onend = ()=>{ if(listening){ try{ rec.start(); }catch(e){ stop(false); } } };
+    try{ rec.start(); }catch(e){ return false; }
+    listening=true; meter(true); armSilence(pauseMs+5000);
+    return true;
+  }
+
+  function stop(commit){
+    if(!listening) return;
+    listening=false; clearTimeout(silence); meter(false);
+    try{ rec.onend=null; rec.stop(); }catch(e){}
+    const t=(finalText+" "+interim).trim();
+    finalText=interim="";
+    if(commit && t && onFinal) onFinal(t);
+    onPartial=onFinal=null;
+  }
+  return {supported, start, stop, get listening(){ return listening; }};
+})();
+
+/* ---------------------------------------------------------------
+   5. THE AI
+   claude — live inside a published Claude artifact
+   gemini — your own key, for a public deployment
+   local  — silent last resort so a demo never dies on stage
+   --------------------------------------------------------------- */
+const AI = {
+  mode:"local", sample:null, key:null, degraded:false,
+
+  async init(){
+    this.key = store.get("key", null);
+    if(window.claude && typeof window.claude.use==="function"){
+      try{
+        const s = await Promise.race([window.claude.use("sample"), wait(4500).then(()=>null)]);
+        if(s){ this.sample=s; this.mode="claude"; return this.mode; }
+      }catch(e){}
+    }
+    if(this.key){ this.mode="gemini"; return this.mode; }
+    this.mode="local"; return this.mode;
+  },
+  live(){ return this.mode==="claude" || !!this.key; },
+  label(){ return this.mode==="claude" ? "Connected" : this.mode==="gemini" ? "Connected · Gemini" : "No connection"; },
+
+  /* public entry: tries the current backend, then falls back across backends
+     instead of silently dropping to the scripted mediator */
+  async chat(turns, opts={}){
+    const order = [];
+    if(this.mode==="claude") order.push("claude");
+    if(this.key) order.push("gemini");
+    if(this.mode==="gemini" && !order.includes("gemini")) order.push("gemini");
+    if(!order.length) throw {code:"no_backend", message:"No mediator configured. Add a Gemini key in settings."};
+    let last=null;
+    for(const m of order){
+      try{
+        const prev=this.mode; this.mode=m;
+        const out = await this._chat(turns,opts);
+        this.lastError=null; this.degraded=false;
+        return out;
+      }catch(e){
+        last = e; this.lastError = {code:e.code||"error", message:e.message||String(e), backend:m};
+        if(e.code==="cancelled") throw e;
+      }
+    }
+    this.degraded=true;
+    throw last;
+  },
+
+  async _chat(turns, {json=false,onText=null,tier="default",signal=null}={}){
+    if(this.mode==="claude"){
+      const o={cache:false, modelTier:tier};
+      if(onText) o.onText=onText;
+      if(signal) o.signal=signal;
+      return json ? await this.sample.json(turns,o) : (await this.sample(turns,o)).text;
+    }
+    if(this.mode==="gemini") return await this._gemini(turns,json,onText,tier);
+    throw {code:"offline"};
+  },
+
+  async _gemini(turns,json,onText,tier){
+    // Google-maintained rolling aliases — auto-swap to the current model, never go stale
+    const model = tier==="complex" ? "gemini-pro-latest" : "gemini-flash-latest";
+    const body = {
+      contents: turns.map(t=>({role:t.role==="assistant"?"model":"user", parts:[{text:t.content}]})),
+      generationConfig:{ temperature:.75, maxOutputTokens:3000 }
+    };
+    if(json) body.generationConfig.responseMimeType="application/json";
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=`+encodeURIComponent(this.key),
+      {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!res.ok){
+      let detail=""; try{ detail=(await res.json())?.error?.message||""; }catch(e){}
+      throw {code:"upstream_error",message:`Gemini ${res.status}${detail?" — "+detail:""}`};
+    }
+    if(!res.body) return await this._geminiPlain(turns,json,onText,model);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let text="", buf="";
+    while(true){
+      const {done,value} = await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for(const ln of lines){
+        if(!ln.startsWith("data:")) continue;
+        try{
+          const j = JSON.parse(ln.slice(5).trim());
+          const d = (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+          if(d){ text+=d; onText && onText({text, delta:d}); }
+        }catch(e){}
+      }
+    }
+    if(!text.trim()) return await this._geminiPlain(turns,json,onText,model);
+    if(json){ const m=text.match(/\{[\s\S]*\}/); if(!m && !text.trim().startsWith("{")) throw {code:"invalid_json",message:"Gemini returned no JSON"}; return JSON.parse(m?m[0]:text); }
+    return text;
+  },
+
+  /* some networks and proxies break SSE — plain POST is the safety net */
+  async _geminiPlain(turns,json,onText,model){
+    const body={contents:turns.map(t=>({role:t.role==="assistant"?"model":"user",parts:[{text:t.content}]})),
+                generationConfig:{temperature:.75,maxOutputTokens:3000}};
+    if(json) body.generationConfig.responseMimeType="application/json";
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=`+encodeURIComponent(this.key),
+      {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok){ let d=""; try{ d=(await r.json())?.error?.message||""; }catch(e){}
+      throw {code:"upstream_error",message:`Gemini ${r.status}${d?" — "+d:""}`}; }
+    const j=await r.json();
+    const text=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+    if(!text.trim()) throw {code:"empty_completion",message:"Gemini returned nothing (check the key's API access)"};
+    onText && onText({text,delta:text});
+    if(json){ const m=text.match(/\{[\s\S]*\}/); return JSON.parse(m?m[0]:text); }
+    return text;
+  },
+
+  /* what the Test button in settings actually runs */
+  async test(){
+    const started=Date.now();
+    try{
+      const t = await this.chat([{role:"user",content:"Reply with exactly: MEDIATOR ONLINE"}],{tier:"quick"});
+      return {ok:true, backend:this.mode, ms:Date.now()-started, detail:String(t).trim().slice(0,60)};
+    }catch(e){
+      return {ok:false, backend:this.lastError?.backend||this.mode, ms:Date.now()-started,
+              detail:`${this.lastError?.code||e.code||"error"} — ${this.lastError?.message||e.message||"unknown"}`};
+    }
+  }
+};
+
+/* ---------------------------------------------------------------
+   6. NET — two-device rooms.
+   Backends: Claude's own store when published, Firebase over plain
+   REST when deployed, and 'local' for pass-the-phone.
+   Each device only ever writes its OWN seat plus shared progress,
+   so the two can talk at the same time without clobbering.
+   --------------------------------------------------------------- */
+const Net = (()=>{
+  let kind="local", db=null, fbUrl=null, poll=null, listeners=[], lastSeen="";
+  const SHARED = ["stage","relation","topic","report","cross","round","signed"];
+
+  async function init(){
+    const fb = store.get("fb", null);
+    if(window.claude && typeof window.claude.use==="function"){
+      try{
+        const d = await Promise.race([window.claude.use("db"), wait(4000).then(()=>null)]);
+        if(d){ db=d; kind="db"; return kind; }
+      }catch(e){}
+    }
+    if(fb){ fbUrl = String(fb).replace(/\/+$/,""); kind="firebase"; return kind; }
+    kind="local"; return kind;
+  }
+  const available = ()=> kind!=="local";
+  const label = ()=> kind==="db" ? "Claude sync" : kind==="firebase" ? "Firebase sync" : "This device only";
+
+  const code = ()=>{ const A="ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<4;i++) s+=A[Math.floor(Math.random()*A.length)]; return s; };
+
+  function payload(){
+    const o={};
+    SHARED.forEach(k=>{ if(S[k]!==undefined && S[k]!==null) o[k]=S[k]; });
+    if(S.seat) o[S.seat] = S[S.seat];
+    o._t = Date.now();
+    return o;
+  }
+  function absorb(rem){
+    if(!rem || typeof rem!=="object") return false;
+    let changed=false;
+    SHARED.forEach(k=>{
+      if(rem[k]===undefined) return;
+      if(JSON.stringify(rem[k])!==JSON.stringify(S[k])){ S[k]=rem[k]; changed=true; }
+    });
+    ["a","b"].forEach(seat=>{
+      if(seat===S.seat || !rem[seat]) return;                 // never let the wire overwrite my own room
+      if(JSON.stringify(rem[seat])!==JSON.stringify(S[seat])){ S[seat]=rem[seat]; changed=true; }
+    });
+    return changed;
+  }
+
+  async function write(){
+    if(kind==="local" || !S.room) return;
+    const body = payload();
+    try{
+      if(kind==="db"){
+        const ref = db.doc("rooms/"+S.room);
+        try{ await ref.update(body); }catch(e){ await ref.set(body); }
+      } else {
+        await fetch(`${fbUrl}/rooms/${S.room}.json`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      }
+    }catch(e){}
+  }
+  async function read(){
+    if(kind==="local" || !S.room) return null;
+    try{
+      if(kind==="db"){ const s = await db.doc("rooms/"+S.room).get(); return s.exists ? s.data() : null; }
+      const r = await fetch(`${fbUrl}/rooms/${S.room}.json`); return r.ok ? await r.json() : null;
+    }catch(e){ return null; }
+  }
+
+  function listen(){
+    stopListen();
+    if(kind==="local" || !S.room) return;
+    if(kind==="db"){
+      const un = db.doc("rooms/"+S.room).onSnapshot(s=>{ if(s.exists && absorb(s.data())) fire(); }, ()=>{});
+      listeners.push(un);
+    } else {
+      poll = setInterval(async ()=>{
+        const d = await read();
+        const sig = JSON.stringify(d);
+        if(sig!==lastSeen){ lastSeen=sig; if(absorb(d)) fire(); }
+      }, 1800);
+    }
+  }
+  function stopListen(){ listeners.forEach(u=>{try{u();}catch(e){}}); listeners=[]; clearInterval(poll); poll=null; }
+
+  let onChange=null;
+  const fire = ()=>{ store.set("last",S); onChange && onChange(); };
+
+  return {
+    init, available, label, code, listen, stopListen, read, write,
+    get kind(){ return kind; },
+    push(){ write(); },
+    onChange(fn){ onChange=fn; },
+    async create(){
+      S.room = code(); S.seat = "a"; S.mode="pair";
+      if(kind!=="local"){
+        try{
+          if(kind==="db") await db.doc("rooms/"+S.room).set(payload());
+          else await fetch(`${fbUrl}/rooms/${S.room}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
+        }catch(e){}
+      }
+      listen(); return S.room;
+    },
+    async join(c){
+      const prev = {room:S.room, seat:S.seat};
+      S.room = String(c||"").toUpperCase().trim();
+      const d = await read();
+      if(!d){ S.room=prev.room; S.seat=prev.seat; return false; }
+      S.seat="b"; S.mode="pair";
+      absorb(d);
+      S.b.name = S.b.name || d.b?.name || "";
+      listen(); write(); return true;
+    }
+  };
+})();
+
+/* ---------------------------------------------------------------
+   7. PROMPTS
+   --------------------------------------------------------------- */
+const VOICE_STYLE = `You are being SPOKEN ALOUD by a text-to-speech voice, so write the way a calm person actually talks: short sentences, contractions, no lists, no headings, no asterisks, no emoji, no stage directions. Never write anything that would sound strange read out loud.`;
+
+function interviewRules(me, other, otherBrief){
+  return `You are the private listener inside "Obviously, I'm Right", a two-sided conflict mediator.
+
+You are speaking ONLY with ${me}. ${other} will never see or hear this conversation.
+Relationship: ${S.relation||"two people who know each other"}.
+What it is said to be about: "${S.topic||"an argument"}".
+${otherBrief?`
+CONFIDENTIAL — you have already heard ${other} privately. The gist:
+"""${otherBrief}"""
+Never reveal, quote, paraphrase, confirm or deny any of it. If asked what ${other} said, say warmly that what is said in each room stays there until the summary. Use it ONLY to ask sharper questions and to gently test the moments the two accounts may differ on.`:""}
+
+${VOICE_STYLE}
+
+How you behave:
+- One question per message. Never two, never a list.
+- Under 45 words. Warm, plain, unhurried.
+- Reflect back one specific thing they just said, in a few words, before you ask the next thing.
+- Never judge, never take a side, never say who is right, no advice yet.
+- Work roughly through: what happened, how it felt, what they think ${other} intended, what they wanted and didn't get, what would count as okay again.
+- If an answer is vague, ask about the one concrete moment instead.
+- If they vent or swear, take it without flinching and ask the next question.
+- Speech-to-text will garble some words. Never comment on typos or odd wording; infer what they meant.
+
+When you can represent ${me} fairly, say one short warm closing line with no question and end that message with the exact token <ENOUGH>. Reach <ENOUGH> by question ${MAXQ} at the latest.
+
+Start now: one sentence that makes ${me} feel safe, then your first question.`;
+}
+
+const briefPrompt = (name,turns)=>`Summarise this person's account of a conflict in 130 words or less, neutrally, for a mediator's private notes. Keep their claims, their feelings, and what they want. Do not judge.
+
+${name}:
+${turns.map(t=>(t.role==="user"?name:"Listener")+": "+t.content).join("\n")}
+
+Reply with the summary only.`;
+
+const sideText = side => S[side].turns.map(t=>(t.role==="user"?S[side].name:"Listener")+": "+t.content).join("\n");
+const doubtText = side => (S.cross?.[side]||[]).map((q,i)=>`Q: ${q}\nA: ${S[side].answers?.[i]||"(not answered)"}`).join("\n");
+
+function doubtsPrompt(){
+  return `You are the mediator in "Obviously, I'm Right". You have now heard both people privately, separately.
+
+Relationship: ${S.relation} · About: ${S.topic}
+
+=== ${S.a.name} said ===
+${sideText("a")}
+
+=== ${S.b.name} said ===
+${sideText("b")}
+
+Before you write anything they will read together, you get one round of clarification. Find the places where the two accounts genuinely don't line up, or where something important is missing, and ask each person about it.
+
+Rules:
+- Ask each person exactly 2 questions.
+- Each question under 28 words, spoken plainly out loud.
+- NEVER reveal what the other person said. Ask about their own account only: "you mentioned X — what happened right before that?" is fine; "they say you did X" is forbidden.
+- Ask about facts, sequence and intent, not about feelings you already have.
+
+Reply with ONLY this JSON, no fence:
+{"a":["question one for ${S.a.name}","question two"],"b":["question one for ${S.b.name}","question two"]}`;
+}
+
+function synthesisPrompt(){
+  const prior = S.round>1 && S.report ? `
+=== The summary you gave them in round ${S.round-1} ===
+${JSON.stringify({headline:S.report.headline, pact:S.report.pact, contribution:S.report.contribution})}
+
+=== What they said was still wrong with it ===
+${S.a.name}: ${S.a.satisfied===false ? (S.a.rebuttal||"not satisfied, no reason given") : "accepted it"}
+${S.b.name}: ${S.b.satisfied===false ? (S.b.rebuttal||"not satisfied, no reason given") : "accepted it"}
+
+Rewrite it properly. Take the objection seriously — do not simply restate the same thing in new words. If someone felt unfairly weighted, re-examine the evidence rather than just moving the number.` : "";
+
+  return `You are the mediator in "Obviously, I'm Right". You have heard both people privately and asked each of them your own clarifying questions. Now write the joint summary they will read together, side by side, on one screen.
+
+Relationship: ${S.relation} · About: ${S.topic}
+
+=== ${S.a.name} (side A), privately ===
+${sideText("a")}
+--- your clarifying round with ${S.a.name} ---
+${doubtText("a")||"(none)"}
+
+=== ${S.b.name} (side B), privately ===
+${sideText("b")}
+--- your clarifying round with ${S.b.name} ---
+${doubtText("b")||"(none)"}
+${prior}
+
+Obligations:
+- Scrupulously even-handed. No winner. Never the words "fault" or "blame".
+- Name where each was reasonable AND where each made it harder. Both, for both.
+- Separate facts from feelings from assumptions. Assumptions are where the damage lives.
+- Where the accounts truly conflict on a fact, mark it disputed, give both versions, decide nothing.
+- Write so BOTH could read it aloud without feeling ambushed.
+
+Reply with ONLY this JSON, no fence:
+{
+ "headline":"one sentence naming the real conflict underneath, under 20 words",
+ "commonGround":["3-4 things both clearly want or agree on, short"],
+ "truthMap":[{"what":"event or claim under 14 words","kind":"agreed|disputed|unseen","a":"how ${S.a.name} tells it, under 22 words","b":"how ${S.b.name} tells it, under 22 words"}],
+ "lenses":{"a":{"facts":["2-3 short"],"feelings":["2-3 short"],"assumptions":["2-3, each starting 'You assumed'"]},
+           "b":{"facts":["2-3 short"],"feelings":["2-3 short"],"assumptions":["2-3, each starting 'You assumed'"]}},
+ "bridge":{"a":{"said":"a real thing ${S.a.name} said or did","meant":"what ${S.b.name} needs to understand was underneath it, under 30 words"},
+           "b":{"said":"a real thing ${S.b.name} said or did","meant":"what ${S.a.name} needs to understand was underneath it, under 30 words"}},
+ "unsaid":{"a":"what ${S.a.name} needed but never asked for, under 24 words","b":"same for ${S.b.name}"},
+ "contribution":{"a":{"pct":50,"note":"what ${S.a.name} did that made it harder, kind and specific, under 26 words"},
+                 "b":{"pct":50,"note":"same for ${S.b.name}"}},
+ "pact":["3 concrete agreements, each under 22 words, doable this week"],
+ "apology":{"a":"one sentence ${S.a.name} could say to ${S.b.name}, plain voice, no grovelling","b":"same the other way"},
+ "spoken":"what you would SAY to the two of them out loud, together, in about 70 words — warm, direct, naming the one thing that will actually fix this",
+ "closing":"one warm sentence to end on, under 22 words"
+}
+"pct" values must total 100 and sit between 25 and 75 — contribution to the misunderstanding, not guilt. Give 4 to 6 truthMap entries.`;
+}
+
+function persuadePrompt(who, other){
+  return `You are the mediator in "Obviously, I'm Right". ${who} has just said the summary still doesn't work for them, while ${other} accepted it.
+
+${VOICE_STYLE}
+
+What ${who} objected to: "${S[who===S.a.name?"a":"b"].rebuttal||"no reason given"}"
+
+Say something to ${who} directly, out loud, in under 70 words. Take the objection seriously. Do not defend the summary out of pride and do not cave just to end the argument. Name the thing ${who} is protecting, say plainly what it would cost them to stay here, and give them one specific next step. Warm, not soft. No lists.`;
+}
+
+/* ---------------------------------------------------------------
+   8. LAST RESORT — only ever reached if the network dies mid-demo.
+   --------------------------------------------------------------- */
+const Local = {
+  qs:[
+    (m,o)=>`I'm listening, and ${o} can't hear any of this. Start wherever it hurts most. What actually happened?`,
+    ()=>`When that happened, what did you feel first, before you had words for it?`,
+    (m,o)=>`What do you think ${o} was trying to do? Not how it looked. What you think they meant.`,
+    (m,o)=>`What did you want from ${o} in that moment that you never got?`,
+    ()=>`Did you say that out loud, or did you expect them to know?`,
+    ()=>`Last one. What would have to happen for this to feel okay again?`
+  ],
+  next(side){
+    const st=S[side], me=st.name, o=side==="a"?S.b.name:S.a.name, i=st.qCount;
+    if(i>=this.qs.length) return `That's everything I need. Thank you for being straight with me. <ENOUGH>`;
+    let lead="";
+    const last = st.turns.filter(t=>t.role==="user").slice(-1)[0]?.content||"";
+    if(i>0 && last.length>12){
+      const frag = last.split(/[.,!?;]/)[0].split(" ").slice(0,7).join(" ").toLowerCase();
+      lead = `${["I hear that","That lands","Thank you for that","Okay"][i%4]}, ${frag}. `;
+    }
+    return lead + this.qs[i](me,o);
+  },
+  doubts(){ return {
+    a:[`You mentioned a specific moment. What happened in the hour before it?`,`Was there a point where you nearly said something and didn't?`],
+    b:[`Take me through that same moment from your side, step by step.`,`Was there something you assumed was obvious that you never actually said?`]
+  };},
+  longest(side,n=1){
+    return S[side].turns.filter(t=>t.role==="user").map(t=>t.content.trim())
+      .sort((a,b)=>b.length-a.length).slice(0,n)
+      .map(s=>s.length>90?s.slice(0,88).trim()+"…":s);
+  },
+  report(){
+    const A=S.a.name,B=S.b.name,T=S.topic||"this";
+    const la=this.longest("a",2), lb=this.longest("b",2);
+    const wa=words(S.a.turns.filter(t=>t.role==="user").map(t=>t.content).join(" "));
+    const wb=words(S.b.turns.filter(t=>t.role==="user").map(t=>t.content).join(" "));
+    const pa=clamp(Math.round(50+(wa-wb)/Math.max(wa+wb,1)*18),30,70);
+    return {
+      headline:`This stopped being about ${T} a while ago. It's about whether each of you still feels held in mind by the other.`,
+      commonGround:["Neither of you wants this to keep going","You both still care what the other thinks","You both felt unheard before you felt angry","Neither of you set out to hurt the other"],
+      truthMap:[
+        {what:"What was actually said",kind:"disputed",a:la[0]||`${A} remembers it one way`,b:lb[0]||`${B} remembers it differently`},
+        {what:"That it escalated fast",kind:"agreed",a:"Agrees it got big quickly",b:"Agrees it got big quickly"},
+        {what:"What the other person intended",kind:"disputed",a:la[1]||`${A} read it as deliberate`,b:lb[1]||`${B} says that was never the intent`},
+        {what:"That neither said the real thing out loud",kind:"unseen",a:`${A} waited to be asked`,b:`${B} waited to be asked`}
+      ],
+      lenses:{
+        a:{facts:["Something specific happened","There was a gap before it was addressed"],feelings:["Dismissed","More hurt than angry"],assumptions:[`You assumed ${B} knew exactly what they were doing`,"You assumed silence meant they didn't care"]},
+        b:{facts:["The same event happened","It was handled differently than expected"],feelings:["Cornered","Tired of being read wrong"],assumptions:[`You assumed ${A} was keeping score`,"You assumed explaining would sound like an excuse"]}
+      },
+      bridge:{a:{said:la[0]||`What ${A} said in the moment`,meant:`Underneath it: ${A} wanted to matter enough that you'd notice without being told.`},
+              b:{said:lb[0]||`What ${B} said in the moment`,meant:`Underneath it: ${B} was protecting themselves from being made the villain again.`}},
+      unsaid:{a:`${A} never said plainly: "I needed you to come to me first."`,b:`${B} never said plainly: "I didn't know it mattered that much to you."`},
+      contribution:{a:{pct:pa,note:`${A}, you decided what it meant before you asked. That turned a question into a verdict.`},
+                    b:{pct:100-pa,note:`${B}, you went quiet to avoid a fight. The silence said more than you intended.`}},
+      pact:["When something stings, say it within 24 hours, not perfectly, just out loud","Ask what the other meant before deciding what it meant","Neither of you brings this argument up again as ammunition"],
+      apology:{a:`${B}, I decided what you meant instead of asking. That wasn't fair to you.`,b:`${A}, I went quiet when you needed me to stay. I'm sorry that felt like not caring.`},
+      spoken:`Here's what I think is actually going on. You're both defending the same thing from opposite ends. ${A} needed to be come to. ${B} needed room to not be the villain. Neither of you asked for it out loud, so you both read silence as proof. Say the thing you've been waiting to be asked about. That's the whole fix.`,
+      closing:"You're not arguing because you stopped caring. You're arguing because you both still do."
+    };
+  }
+};
+
+/* ---------------------------------------------------------------
+   9. ROUTER
+   --------------------------------------------------------------- */
+let TOKEN = 0;                                  // invalidates in-flight work on stage change
+function go(stage){ TOKEN++; Speak.cancel(); Ears.stop(false); S.stage=stage; save(); render(); }
+function el(h){ const d=document.createElement("div"); d.innerHTML=h.trim(); return d.firstElementChild; }
+function stage(h){ const s=document.createElement("section"); s.innerHTML=h; return s; }
+
+function render(){
+  const map = {
+    open:Open, setup:Setup, pair:Pair, hold:Hold,
+    chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
+    doubting:Doubting, doubtsA:()=>Doubts("a"), doubtsB:()=>Doubts("b"), sealD:SealD, hold2:Hold2,
+    synth:Synth, findings:Findings, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed
+  };
+  app.innerHTML="";
+  const n = (map[S.stage]||Open)();
+  n.classList.add("stage","on");
+  app.appendChild(n);
+}
+Net.onChange(()=>{ if(document.visibilityState!=="hidden") render(); });
+
+function topbar(title,back){
+  return `<div class="topbar">
+    ${back?`<button class="back" id="backBtn" aria-label="Back">${ICON.back}</button>`:""}
+    <span class="t">${esc(title)}</span><span class="sp"></span>
+    ${S.room?`<span class="roundpill">${esc(S.room)}</span>`:""}
+    <button class="back" id="cogBtn" aria-label="Settings">${ICON.cog}</button></div>`;
+}
+function wireTop(n,back){
+  const b=$("#backBtn",n); if(b&&back) b.onclick=back;
+  const c=$("#cogBtn",n); if(c) c.onclick=openSettings;
+}
+
+/* ---------------------------------------------------------------
+   10. THE VOICE ROOM
+   One shared conversation surface: the orb listens, speaks, and
+   hands the turn back and forth without anyone pressing anything.
+   --------------------------------------------------------------- */
+function voiceShell({title,back,name,side,meta}){
+  return `
+    ${topbar(title,back)}
+    <div class="whobar"><span class="dot ${side}"></span>
+      <span class="name">${esc(name)}</span>
+      <span class="meta" id="meta">${esc(meta||"")}</span></div>
+    <div class="rail ${side}"><i id="rail"></i></div>
+    <div class="voice grow">
+      <div class="voicestage"><div class="vorb"><span class="vstate" id="vstate">connecting</span></div></div>
+      <div class="caption" id="cap"></div>
+      <div class="caption user" id="ucap" style="min-height:0"></div>
+      <div id="composer" hidden>
+        <div class="composer">
+          <textarea class="ta" id="say" rows="1" placeholder="Type it instead…"></textarea>
+          <button class="iconbtn go" id="send" disabled aria-label="Send">${ICON.send}</button>
+        </div>
+      </div>
+      <div class="vctl">
+        <button class="vbtn sm" id="kbd" aria-label="Type instead">${ICON.kbd}</button>
+        <button class="vbtn main" id="mainBtn" aria-label="Talk">${ICON.mic}</button>
+        <button class="vbtn sm" id="volBtn" aria-label="Voice on or off">${Speak.enabled?ICON.vol:ICON.mute}</button>
+      </div>
+      <p class="tiny" id="hint" style="text-align:center;padding-top:8px"></p>
+    </div>`;
+}
+
+/* Runs one full conversational exchange loop inside a stage node. */
+function VoiceRoom(n, cfg){
+  const my = TOKEN;
+  const cap=$("#cap",n), ucap=$("#ucap",n), vstate=$("#vstate",n);
+  const mainBtn=$("#mainBtn",n), kbd=$("#kbd",n), vol=$("#volBtn",n);
+  const comp=$("#composer",n), ta=$("#say",n), send=$("#send",n), hint=$("#hint",n);
+  let typing = !Ears.supported();
+  let busy=false;
+
+  const alive = ()=>TOKEN===my;
+  function setState(txt,live){ if(!alive())return; vstate.textContent=txt; vstate.classList.toggle("live",!!live); }
+
+  vol.onclick=()=>{ Speak.enabled=!Speak.enabled; vol.innerHTML=Speak.enabled?ICON.vol:ICON.mute; };
+  kbd.onclick=()=>{ typing=!typing; applyMode(); };
+  function applyMode(){
+    comp.hidden=!typing;
+    mainBtn.style.display = typing?"none":"grid";
+    hint.textContent = typing ? "" : (Ears.supported()? "It listens while you talk, and answers when you pause." : "Voice input isn't available in this browser — type instead.");
+    if(typing) setTimeout(()=>ta.focus(),100);
+  }
+  const fit=()=>{ ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,140)+"px"; send.disabled=!ta.value.trim(); };
+  ta.addEventListener("input",fit);
+  ta.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey&&innerWidth>700){e.preventDefault();submitText();} });
+  send.onclick=submitText;
+  function submitText(){ const v=ta.value.trim(); if(!v||busy) return; ta.value=""; fit(); commit(v); }
+
+  mainBtn.onclick=()=>{
+    if(busy && Speak.busy){ Speak.cancel(); startListening(); return; }   // barge in
+    if(Ears.listening){ Ears.stop(true); return; }
+    startListening();
+  };
+
+  function startListening(){
+    if(!alive()||busy) return;
+    ucap.textContent=""; setState("listening",true);
+    mainBtn.dataset.live="1"; mainBtn.innerHTML=ICON.wave;
+    const ok = Ears.start({
+      partial:t=>{ if(alive()) ucap.textContent=t; },
+      final:t=>{ if(alive()) commit(t); },
+      pauseMs:2300
+    });
+    if(!ok){ typing=true; applyMode(); }
+  }
+  function idle(){
+    mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.mic;
+    setState(typing?"your turn":"tap to talk",false);
+  }
+
+  async function commit(text){
+    if(!alive()||busy) return;
+    Ears.stop(false); ucap.textContent="";
+    cfg.onUser(text);
+    await speakNext();
+  }
+
+  async function speakNext(){
+    if(!alive()) return;
+    busy=true; mainBtn.dataset.live="0"; mainBtn.innerHTML=ICON.stop;
+    setState("thinking",false); cap.textContent=""; Sky.setLevel(.12);
+    Speak.reset();
+    let full="", started=false;
+    try{
+      full = await cfg.next(({text})=>{
+        if(!alive()) return;
+        if(!started){ started=true; setState("speaking",true); }
+        cap.textContent = text.replace("<ENOUGH>","").trim();
+        Speak.feed(text.replace("<ENOUGH>",""));
+      });
+    }catch(e){
+      if(!cfg.fallback) throw e;
+      full = cfg.fallback();
+      cap.textContent = full.replace("<ENOUGH>","");
+      const h=$("#hint",n);
+      if(h) h.innerHTML = `<span style="color:var(--ember)">Running the offline mediator — ${
+        esc(AI.lastError?.message || AI.lastError?.code || "the live mediator didn't answer")
+      }. Tap the gear to fix it.</span>`;
+    }
+    if(!alive()) return;
+    const clean = String(full).replace("<ENOUGH>","").trim();
+    cap.textContent = clean;
+    const finished = cfg.onAI(clean, /<ENOUGH>/.test(full));
+    await new Promise(res=>{
+      let settled=false; const done=()=>{ if(!settled){ settled=true; res(); } };
+      Speak.flush(clean, done);
+      if(!Speak.enabled || !Speak.ready()) setTimeout(done, Math.min(clean.length*26, 5200));
+      else setTimeout(done, Math.min(clean.length*95, 32000));   // safety net
+    });
+    if(!alive()) return;
+    busy=false; Sky.setLevel(0);
+    if(finished){ setState("done",false); mainBtn.style.display="none"; kbd.style.display="none"; cfg.onFinish(); return; }
+    idle();
+    if(!typing && Ears.supported()) startListening();
+  }
+
+  applyMode(); idle();
+  return {speakNext, setMeta:(t)=>{ $("#meta",n).textContent=t; }, setRail:p=>{ $("#rail",n).style.width=p+"%"; }};
+}
+
+async function streamAI(turns, onText, tier){ return await AI.chat(turns,{onText,tier}); }
+
+/* ---------------------------------------------------------------
+   11. OPEN
+   --------------------------------------------------------------- */
+function Open(){
+  Sky.setMerge(0); Sky.setEnergy(1); Sky.setLevel(0);
+  const n=stage(`
+    <div class="topbar"><span class="sp"></span>
+      <button class="back" id="cogBtn" aria-label="Settings">${ICON.cog}</button></div>
+    <div class="grow center" style="display:flex;flex-direction:column">
+      <div class="orbwrap"></div>
+      <div class="opening-copy">
+        <h1 class="display">Obviously,<br><em>I'm right</em></h1>
+        <p class="tagline">Because everyone thinks they are.<br><b>Let's hear both sides.</b></p>
+      </div>
+    </div>
+    <div class="stack" style="padding-bottom:6px">
+      <button class="btn bloom" id="begin">Start a mediation</button>
+      <button class="tiny" id="modeLabel" style="text-align:center;width:100%;color:var(--mist-dim);text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--hair)">Waking the mediator…</button>
+    </div>`);
+  $("#begin",n).onclick=()=>{
+    // unlock speech synthesis on the first real gesture — required on iOS
+    try{ speechSynthesis.speak(new SpeechSynthesisUtterance(" ")); }catch(e){}
+    go("setup");
+  };
+  $("#modeLabel",n).onclick=openSettings;
+  wireTop(n,null);
+  Promise.all([AI.init(), Net.init()]).then(()=>{
+    const l=$("#modeLabel"); if(!l) return;
+    l.textContent = AI.live()
+      ? `${AI.label()} · ${Net.available()?"two devices":"this device"} · tap to test`
+      : "No mediator connected — tap to add a key";
+    l.style.color = AI.live()? "var(--mist-dim)" : "var(--ember)";
+  });
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   12. SETUP
+   --------------------------------------------------------------- */
+function Setup(){
+  Sky.setMerge(0); Sky.setEnergy(.55);
+  const n=stage(`
+    ${topbar("Who's in this?",true)}
+    <div class="grow stack lg">
+      <div><h2 class="h2">Two names, and what it's about.</h2>
+        <p class="lede" style="margin-top:9px">You'll each speak to the mediator on your own. Neither of you hears the other's room.</p></div>
+      <div class="stack">
+        <label class="field a"><span>First person</span><input class="input" id="nameA" placeholder="Their name" maxlength="22" autocomplete="off"></label>
+        <label class="field b"><span>Second person</span><input class="input" id="nameB" placeholder="Their name" maxlength="22" autocomplete="off"></label>
+      </div>
+      <div class="field"><span>How do you know each other?</span>
+        <div class="chips" id="rels">${RELATIONS.map(r=>`<button class="chip" aria-pressed="false" data-r="${esc(r)}">${esc(r)}</button>`).join("")}</div></div>
+      <label class="field"><span>In one line, what's the argument about?</span>
+        <input class="input" id="topic" placeholder="e.g. money, a broken promise, the wedding" maxlength="90"></label>
+      <div class="field"><span>How are you doing this?</span>
+        <div class="chips" id="modes">
+          <button class="chip" data-m="solo" aria-pressed="true">One phone, passed over</button>
+          <button class="chip" data-m="pair" aria-pressed="false" id="pairChip">Two devices</button>
+        </div>
+        <p class="tiny" id="pairNote"></p></div>
+    </div>
+    <div class="stack" style="padding-top:16px"><button class="btn" id="next" disabled>Continue</button></div>`);
+
+  const A=$("#nameA",n),B=$("#nameB",n),T=$("#topic",n),NX=$("#next",n);
+  A.value=S.a.name; B.value=S.b.name; T.value=S.topic;
+  const check=()=>NX.disabled=!(A.value.trim()&&B.value.trim()&&S.relation);
+  [A,B,T].forEach(i=>i.addEventListener("input",check));
+  $("#rels",n).querySelectorAll(".chip").forEach(c=>{
+    if(c.dataset.r===S.relation) c.setAttribute("aria-pressed","true");
+    c.onclick=()=>{ $("#rels",n).querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed","false"));
+      c.setAttribute("aria-pressed","true"); S.relation=c.dataset.r; check(); };
+  });
+  const note=$("#pairNote",n);
+  Net.init().then(()=>{
+    if(!Net.available()){ $("#pairChip",n).disabled=true; $("#pairChip",n).style.opacity=".4";
+      note.textContent="Two devices needs sync — add a Firebase URL in settings to turn it on."; }
+    else note.textContent = Net.label()+" is live. You'll get a 4-letter room code to share.";
+  });
+  $("#modes",n).querySelectorAll(".chip").forEach(c=>{
+    if(c.dataset.m===S.mode) c.setAttribute("aria-pressed","true");
+    c.onclick=()=>{ if(c.disabled) return;
+      $("#modes",n).querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed","false"));
+      c.setAttribute("aria-pressed","true"); S.mode=c.dataset.m; };
+  });
+  NX.onclick=()=>{
+    S.a.name=A.value.trim(); S.b.name=B.value.trim(); S.topic=T.value.trim()||"something that happened";
+    if(S.mode==="pair") go("pair"); else { S.seat=null; go("chamberA"); }
+  };
+  wireTop(n,()=>go("open"));
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   13. PAIR — room codes
+   --------------------------------------------------------------- */
+function Pair(){
+  Sky.setMerge(.1); Sky.setEnergy(.6);
+  const n=stage(`
+    ${topbar("Two devices",true)}
+    <div class="grow stack lg" style="padding-top:6px">
+      <div><h2 class="h2">One of you opens the room.</h2>
+        <p class="lede" style="margin-top:9px">The other joins with the code. You can both talk to the mediator at the same time.</p></div>
+      <div class="card"><div class="stack">
+        <div class="side-label a"><span class="dot a"></span>${esc(S.a.name)} — open it</div>
+        <button class="btn a" id="createBtn">Create the room</button>
+        <div id="codeBox" hidden><div class="code" id="codeTxt"></div>
+          <p class="tiny" style="text-align:center;margin-top:8px">Give this to ${esc(S.b.name)}</p>
+          <button class="btn ghost sm" id="shareBtn" style="width:100%;margin-top:12px">Share the code</button>
+          <button class="btn bloom" id="goA" style="margin-top:10px">Open my room</button></div>
+      </div></div>
+      <div class="card"><div class="stack">
+        <div class="side-label b"><span class="dot b"></span>${esc(S.b.name)} — join</div>
+        <input class="codein" id="joinIn" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters">
+        <button class="btn b" id="joinBtn">Join the room</button>
+        <p class="tiny" id="joinMsg" style="text-align:center"></p>
+      </div></div>
+    </div>`);
+
+  $("#createBtn",n).onclick=async()=>{
+    const c = await Net.create();
+    $("#codeTxt",n).textContent=c; $("#codeBox",n).hidden=false; $("#createBtn",n).style.display="none";
+    save();
+  };
+  $("#goA",n).onclick=()=>go("chamberA");
+  $("#shareBtn",n).onclick=()=>{
+    const t=`Join our mediation. Code: ${S.room}\n${location.href}`;
+    if(navigator.share) navigator.share({title:"Obviously, I'm Right",text:t}).catch(()=>{});
+    else { navigator.clipboard?.writeText(t); $("#shareBtn",n).textContent="Copied"; }
+  };
+  $("#joinBtn",n).onclick=async()=>{
+    const c=$("#joinIn",n).value.trim().toUpperCase();
+    if(c.length<4){ $("#joinMsg",n).textContent="That code is four letters."; return; }
+    $("#joinMsg",n).textContent="Looking for the room…";
+    const ok = await Net.join(c);
+    if(!ok){ $("#joinMsg",n).textContent="No room with that code. Check it with them."; return; }
+    go("chamberB");
+  };
+  wireTop(n,()=>go("setup"));
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   14. CHAMBER — the private voice interview
+   --------------------------------------------------------------- */
+function Chamber(side){
+  const st=S[side], other = side==="a"?S.b.name:S.a.name;
+  Sky.setMerge(0); Sky.setEnergy(.3); Sky.setFocus(1);
+  const n=stage(voiceShell({
+    title: side==="a"?"Room one":"Room two", back:true, side,
+    name:`${st.name}, speaking privately`, meta:`question ${Math.min(st.qCount+1,MAXQ)} of ${MAXQ}`
+  }));
+
+  const room = VoiceRoom(n,{
+    next: async (onText)=>{
+      if(!AI.live()) throw {code:"offline"};
+      const turns=[{role:"user",content:interviewRules(st.name,other, side==="b"?(S.briefA||null):null)}, ...st.turns];
+      return await streamAI(turns,onText,"default");
+    },
+    fallback: ()=>Local.next(side),
+    onUser: t=>{ st.turns.push({role:"user",content:t}); save(); },
+    onAI: (text,enough)=>{
+      st.turns.push({role:"assistant",content:text}); st.qCount++; save();
+      room.setMeta(`question ${Math.min(st.qCount,MAXQ)} of ${MAXQ}`);
+      room.setRail(Math.round(st.qCount/MAXQ*100));
+      return enough || st.qCount>=MAXQ;
+    },
+    onFinish: ()=>{
+      st.done=true; save();
+      $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">${
+        S.mode==="pair" ? "Done — wait for the other room" : (side==="a"?"Seal this room":"Bring both sides together")}</button>`;
+      $("#fin",n).onclick=()=>{
+        if(S.mode==="pair") go("hold");
+        else go(side==="a"?"seal":"doubting");
+      };
+    }
+  });
+
+  room.setRail(Math.round(st.qCount/MAXQ*100));
+  if(st.done){ $("#cap",n).textContent="This room is closed."; $("#vstate",n).textContent="done";
+    $("#mainBtn",n).style.display="none";
+    $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">Continue</button>`;
+    $("#fin",n).onclick=()=>{ if(S.mode==="pair") go("hold"); else go(side==="a"?"seal":"doubting"); };
+  } else room.speakNext();
+
+  wireTop(n,()=>{ if(confirm("Leave this room? Everything said here is kept.")) go(S.mode==="pair"?"pair":"setup"); });
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   15. SEAL / HOLD
+   --------------------------------------------------------------- */
+function Seal(){
+  Sky.setMerge(.12); Sky.setEnergy(.5); Sky.setFocus(0);
+  const n=stage(`
+    ${topbar("Sealed",false)}
+    <div class="seal grow">
+      <div class="sealmark">${ICON.lock}</div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">${esc(S.a.name)}'s room is closed.</h2>
+        <p class="lede" style="margin-inline:auto">Nothing in it reaches ${esc(S.b.name)} — not the words, not the tone, not the order they came out in.</p>
+      </div>
+      <div class="card bloom" style="text-align:left">
+        <p style="font-size:15px;line-height:1.55">Hand the phone to <b>${esc(S.b.name)}</b> now.</p>
+      </div>
+    </div>
+    <div class="stack" style="padding-top:8px">
+      <button class="btn b" id="go2">I'm ${esc(S.b.name)} — open my room</button></div>`);
+  $("#go2",n).onclick=()=>go("chamberB");
+  wireTop(n,null);
+  if(!S.briefA && AI.live())
+    AI.chat([{role:"user",content:briefPrompt(S.a.name,S.a.turns)}],{tier:"quick"})
+      .then(t=>{ S.briefA=String(t).trim(); save(); }).catch(()=>{});
+  return n;
+}
+
+function SealD(){
+  Sky.setMerge(.5);
+  const n=stage(`
+    ${topbar("Sealed",false)}
+    <div class="seal grow"><div class="sealmark">${ICON.lock}</div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">${esc(S.a.name)} has answered.</h2>
+        <p class="lede" style="margin-inline:auto">The mediator has two questions for ${esc(S.b.name)} as well.</p></div></div>
+    <div class="stack"><button class="btn b" id="g">I'm ${esc(S.b.name)} — my turn</button></div>`);
+  $("#g",n).onclick=()=>go("doubtsB");
+  wireTop(n,null); return n;
+}
+
+function Hold(){
+  Sky.setMerge(.3); Sky.setEnergy(.6); Sky.setFocus(0);
+  const mine = S.seat||"a", theirs = mine==="a"?"b":"a";
+  const ready = S[theirs].done;
+  const n=stage(`
+    ${topbar("Waiting",false)}
+    <div class="seal grow">
+      <div class="sealmark">${ICON.lock}</div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">${ready?"Both rooms are closed.":`Waiting for ${esc(S[theirs].name)}`}</h2>
+        <p class="lede" style="margin-inline:auto">${ready
+          ? "Nothing either of you said is shown to the other. Only the summary is shared."
+          : "Their room is still open. This updates by itself the moment they finish."}</p>
+      </div>
+      ${ready?"":`<div class="waiting"><i></i><span>Listening for their device</span></div>`}
+    </div>
+    <div class="stack">${ready?`<button class="btn bloom" id="g">Bring both sides together</button>`:""}</div>`);
+  if(ready) $("#g",n).onclick=()=>go("doubting");
+  wireTop(n,null);
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   16. DOUBTING — the mediator works out what it still doesn't know
+   --------------------------------------------------------------- */
+function Doubting(){
+  Sky.setMerge(.55); Sky.setEnergy(1); Sky.setFocus(0);
+  const n=stage(`
+    <div class="synth grow">
+      <div style="height:clamp(110px,24dvh,200px)"></div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">Reading both rooms</h2>
+        <p class="lede" style="margin-inline:auto">Before it writes anything, the mediator is working out what it still doesn't understand.</p>
+      </div>
+      <div class="synthsteps" id="steps">
+        ${["Comparing the two accounts","Finding where they don't line up","Writing its questions for each of you"]
+          .map((s,i)=>`<div class="sstep" data-i="${i}"><span class="sdot"></span><span>${esc(s)}</span></div>`).join("")}
+      </div></div>`);
+  const my=TOKEN;
+  const all=n.querySelectorAll(".sstep"); let i=-1;
+  const tick=setInterval(()=>{ if(i>=0)all[i].classList.replace("on","done"); i++; if(i<all.length)all[i].classList.add("on"); },2200);
+  all[0].classList.add("on");
+
+  (async()=>{
+    let cross=null;
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      cross = await AI.chat([{role:"user",content:doubtsPrompt()}],{json:true,tier:"default"});
+    }catch(e){ cross = Local.doubts(); }
+    if(TOKEN!==my) return;
+    const fix = v => Array.isArray(v)&&v.length ? v.slice(0,2).map(String) : null;
+    S.cross = { a: fix(cross?.a)||Local.doubts().a, b: fix(cross?.b)||Local.doubts().b };
+    S.a.answers=[]; S.b.answers=[];
+    clearInterval(tick); save();
+    await wait(700);
+    if(TOKEN!==my) return;
+    go(S.mode==="pair" ? (S.seat==="b"?"doubtsB":"doubtsA") : "doubtsA");
+  })();
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   17. DOUBTS — answering the mediator's questions, out loud
+   --------------------------------------------------------------- */
+function Doubts(side){
+  const st=S[side];
+  const qs = (S.cross&&S.cross[side]) || Local.doubts()[side];
+  st.answers = st.answers||[];
+  Sky.setMerge(.55); Sky.setEnergy(.4); Sky.setFocus(1);
+
+  const n=stage(voiceShell({
+    title:"A few things to check", back:false, side,
+    name:`${st.name}, one more round`, meta:`${Math.min(st.answers.length+1,qs.length)} of ${qs.length}`
+  }));
+
+  const room = VoiceRoom(n,{
+    next: async (onText)=>{
+      const i = st.answers.length;
+      const t = i>=qs.length
+        ? "That's everything I needed. Thank you for going back over it. <ENOUGH>"
+        : (i===0 ? `Thanks for waiting. I've read both accounts and there are two things I want to get right. ${qs[0]}` : qs[i]);
+      onText({text:t});
+      return t;
+    },
+    onUser: t=>{ st.answers.push(t); save(); room.setMeta(`${Math.min(st.answers.length+1,qs.length)} of ${qs.length}`);
+                 room.setRail(Math.round(st.answers.length/qs.length*100)); },
+    onAI: ()=> st.answers.length>=qs.length,
+    onFinish: ()=>{
+      st.crossDone=true; save();
+      const next = ()=>{
+        if(S.mode==="pair") return go("hold2");
+        return go(side==="a" ? "sealD" : "synth");
+      };
+      $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">${
+        S.mode==="pair" ? "Done" : (side==="a" ? `Pass to ${esc(S.b.name)}` : "See what the mediator found")}</button>`;
+      $("#fin",n).onclick=next;
+    }
+  });
+  room.setRail(Math.round(st.answers.length/qs.length*100));
+  room.speakNext();
+  wireTop(n,null);
+  return n;
+}
+
+
+function Hold2(){
+  Sky.setMerge(.7); Sky.setEnergy(.7); Sky.setFocus(0);
+  const mine=S.seat||"a", theirs=mine==="a"?"b":"a";
+  const ready=!!S[theirs].crossDone;
+  const n=stage(`
+    ${topbar("Waiting",false)}
+    <div class="seal grow"><div class="sealmark">${ICON.lock}</div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">${ready?"Both of you have answered.":`Waiting for ${esc(S[theirs].name)}`}</h2>
+        <p class="lede" style="margin-inline:auto">${ready
+          ? "The mediator has everything it asked for."
+          : "They're still answering the mediator's questions. This updates on its own."}</p></div>
+      ${ready?"":`<div class="waiting"><i></i><span>Listening for their device</span></div>`}</div>
+    <div class="stack">${ready?`<button class="btn bloom" id="g">See what the mediator found</button>`:""}</div>`);
+  if(ready) $("#g",n).onclick=()=>go("synth");
+  wireTop(n,null); return n;
+}
+
+/* ---------------------------------------------------------------
+   18. SYNTHESIS
+   --------------------------------------------------------------- */
+function Synth(){
+  Sky.setEnergy(1); Sky.setFocus(0);
+  const steps=["Reading both accounts in full","Separating facts from feelings","Finding the assumptions underneath","Marking where the two stories split","Writing something you can both read"];
+  const n=stage(`
+    <div class="synth grow">
+      <div style="height:clamp(110px,24dvh,200px)"></div>
+      <div class="stack sm" style="text-align:center">
+        <h2 class="h2">${S.round>1?"Rewriting it":"Bringing both sides together"}</h2>
+        <p class="lede" style="margin-inline:auto">${S.round>1?"Taking the objection seriously, not just moving a number.":"Neither of you is being scored."}</p>
+      </div>
+      <div class="synthsteps">${steps.map((s,i)=>`<div class="sstep" data-i="${i}"><span class="sdot"></span><span>${esc(s)}</span></div>`).join("")}</div>
+    </div>`);
+  const my=TOKEN, all=n.querySelectorAll(".sstep"); let i=-1;
+  const adv=()=>{ if(i>=0)all[i].classList.replace("on","done"); i++; if(i<all.length){all[i].classList.add("on"); Sky.setMerge(.2+i*.17);} };
+  adv(); const tick=setInterval(adv,2500);
+
+  (async()=>{
+    let rep;
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      rep = await AI.chat([{role:"user",content:synthesisPrompt()}],{json:true,tier:"complex"});
+    }catch(e){ await wait(1200); rep = Local.report(); }
+    if(TOKEN!==my) return;
+    clearInterval(tick);
+    all.forEach(s=>{ s.classList.remove("on"); s.classList.add("done"); });
+    S.report = normalise(rep); S.a.satisfied=null; S.b.satisfied=null;
+    S.a.rebuttal=""; S.b.rebuttal=""; save();
+    Sky.setMerge(1);
+    await wait(1400);
+    if(TOKEN===my) go("findings");
+  })();
+  return n;
+}
+
+function normalise(r){
+  const d=Local.report(); r=r||{};
+  const arr=(v,f)=>Array.isArray(v)&&v.length?v:f;
+  r.headline=r.headline||d.headline;
+  r.commonGround=arr(r.commonGround,d.commonGround);
+  r.truthMap=arr(r.truthMap,d.truthMap).map(x=>({what:x.what||"",kind:["agreed","disputed","unseen"].includes(x.kind)?x.kind:"unseen",a:x.a||"",b:x.b||""}));
+  r.lenses=r.lenses||d.lenses;
+  ["a","b"].forEach(k=>{ r.lenses[k]=r.lenses[k]||d.lenses[k];
+    ["facts","feelings","assumptions"].forEach(f=>r.lenses[k][f]=arr(r.lenses[k][f],d.lenses[k][f])); });
+  r.bridge=r.bridge||d.bridge; r.unsaid=r.unsaid||d.unsaid; r.contribution=r.contribution||d.contribution;
+  let pa=Number(r.contribution.a?.pct); if(!isFinite(pa)) pa=50;
+  pa=clamp(Math.round(pa),25,75); r.contribution.a.pct=pa; r.contribution.b.pct=100-pa;
+  r.pact=arr(r.pact,d.pact).slice(0,4);
+  r.apology=r.apology||d.apology; r.spoken=r.spoken||d.spoken; r.closing=r.closing||d.closing;
+  return r;
+}
+
+/* ---------------------------------------------------------------
+   19. FINDINGS
+   --------------------------------------------------------------- */
+function Findings(){
+  Sky.setMerge(1); Sky.setEnergy(.5); Sky.setFocus(0);
+  const r=S.report, A=S.a.name, B=S.b.name, C=2*Math.PI*48;
+  const uw=s=>words(S[s].turns.filter(t=>t.role==="user").map(t=>t.content).join(" "))+words((S[s].answers||[]).join(" "));
+  const wa=uw("a"), wb=uw("b"), qa=S.a.qCount+((S.a.answers||[]).length), qb=S.b.qCount+((S.b.answers||[]).length);
+  const bal=Math.round(wa/Math.max(wa+wb,1)*100);
+  const tags=(x,c)=>x.map(v=>`<span class="tag ${c}">${esc(v)}</span>`).join("");
+  const mySeat = S.seat;
+
+  const n=stage(`
+    ${topbar("Both sides",false)}
+    <div class="findings">
+      <div class="stack" style="padding-top:2px">
+        <p class="tiny">Round ${S.round} · what the two of you said, read together</p>
+        <h1 class="headline">${esc(r.headline)}</h1>
+        <button class="btn ghost sm" id="playAll" style="width:auto;justify-self:start">${ICON.vol} Hear it from the mediator</button>
+        <p class="lede" id="spokenTxt" hidden style="font-size:15.5px">${esc(r.spoken)}</p>
+      </div>
+
+      <div class="sect"><h3 class="h3">What you already agree on</h3>
+        <div class="card bloom"><div class="stack sm">
+          ${r.commonGround.map(x=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start">
+            <span class="dot bloom" style="margin-top:8px"></span><span style="font-size:14.5px;line-height:1.5">${esc(x)}</span></div>`).join("")}
+        </div></div></div>
+
+      <div class="sect"><h3 class="h3">Where your stories meet, and where they split</h3>
+        <p class="lede">Disputed doesn't mean someone is lying. Two people can remember the same minute differently.</p>
+        <div class="legend"><span><i style="background:var(--bloom)"></i>You agree</span>
+          <span><i style="background:var(--ember)"></i>Remembered differently</span>
+          <span><i style="background:var(--mist-dim)"></i>Only one of you saw it</span></div>
+        <div class="tm">${r.truthMap.map(x=>`<div class="tmrow" data-k="${x.kind}"><span class="tmpin"></span><div>
+          <div class="what">${esc(x.what)}</div><div class="vs">
+          <div class="a"><b style="color:var(--ember)">${esc(A)}</b> · ${esc(x.a)}</div>
+          <div class="b"><b style="color:var(--iris)">${esc(B)}</b> · ${esc(x.b)}</div></div></div></div>`).join("")}</div></div>
+
+      <div class="sect"><h3 class="h3">Fact, feeling, assumption</h3>
+        <p class="lede">Almost every long argument is built on the third one. Read your own column first.</p>
+        <div class="split">
+          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)}</div><div class="stack sm">
+            <div class="chips">${tags(r.lenses.a.facts,"fact")}</div><div class="chips">${tags(r.lenses.a.feelings,"feel")}</div>
+            <div class="chips">${tags(r.lenses.a.assumptions,"assume")}</div></div></div>
+          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)}</div><div class="stack sm">
+            <div class="chips">${tags(r.lenses.b.facts,"fact")}</div><div class="chips">${tags(r.lenses.b.feelings,"feel")}</div>
+            <div class="chips">${tags(r.lenses.b.assumptions,"assume")}</div></div></div></div>
+        <p class="tiny" style="margin-top:10px">Pink is what happened. Amber is how it felt. Violet is what you filled in yourself.</p></div>
+
+      <div class="sect"><h3 class="h3">What you actually meant</h3>
+        <div class="stack">
+          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)} said</div>
+            <p style="font-size:14.5px;color:var(--mist);line-height:1.5">${esc(r.bridge.a.said)}</p>
+            <p style="font-size:15.5px;margin-top:11px;padding-top:11px;border-top:1px solid var(--hair)">${esc(r.bridge.a.meant)}</p></div>
+          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)} said</div>
+            <p style="font-size:14.5px;color:var(--mist);line-height:1.5">${esc(r.bridge.b.said)}</p>
+            <p style="font-size:15.5px;margin-top:11px;padding-top:11px;border-top:1px solid var(--hair)">${esc(r.bridge.b.meant)}</p></div></div></div>
+
+      <div class="sect"><h3 class="h3">What neither of you said out loud</h3>
+        <div class="split">
+          <div class="card"><div class="side-label a"><span class="dot a"></span>${esc(A)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.a)}</p></div>
+          <div class="card"><div class="side-label b"><span class="dot b"></span>${esc(B)}</div><p style="font-size:14.5px;line-height:1.55">${esc(r.unsaid.b)}</p></div></div></div>
+
+      <div class="sect"><h3 class="h3">How each of you added to it</h3>
+        <p class="lede">Not a guilt score. How much of the misunderstanding each of you was carrying — and both of you were carrying some.</p>
+        <div class="card"><div class="arcs">
+          <div class="arc a"><div class="arcbox"><svg viewBox="0 0 110 110"><circle class="ring-bg" cx="55" cy="55" r="48"/>
+            <circle class="ring" id="ringA" cx="55" cy="55" r="48" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}"/></svg>
+            <span class="val num" style="color:var(--ember)">${r.contribution.a.pct}%</span></div><span class="cap">${esc(A)}</span></div>
+          <div class="arc b"><div class="arcbox"><svg viewBox="0 0 110 110"><circle class="ring-bg" cx="55" cy="55" r="48"/>
+            <circle class="ring" id="ringB" cx="55" cy="55" r="48" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}"/></svg>
+            <span class="val num" style="color:var(--iris)">${r.contribution.b.pct}%</span></div><span class="cap">${esc(B)}</span></div>
+        </div>
+        <div class="stack sm" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--hair)">
+          <p style="font-size:14.5px;line-height:1.55"><b style="color:var(--ember)">${esc(A)}</b> — ${esc(r.contribution.a.note)}</p>
+          <p style="font-size:14.5px;line-height:1.55"><b style="color:var(--iris)">${esc(B)}</b> — ${esc(r.contribution.b.note)}</p></div></div></div>
+
+      <div class="sect"><h3 class="h3">Proof this was even-handed</h3>
+        <p class="lede">A mutual friend can't show you this. Here is exactly how much of each of you was heard.</p>
+        <div class="card"><div class="ledger">
+          <div class="lrow"><span class="lk">Questions asked</span><span class="lv a num">${qa}</span><span class="lv b num">${qb}</span></div>
+          <div class="lrow"><span class="lk">Words heard</span><span class="lv a num">${wa}</span><span class="lv b num">${wb}</span></div>
+          <div class="lrow"><span class="lk">Read the other's raw words</span><span class="lv a">no</span><span class="lv b">no</span></div>
+          <div class="lrow"><span class="lk">Clarifying questions</span><span class="lv a num">${(S.cross?.a||[]).length}</span><span class="lv b num">${(S.cross?.b||[]).length}</span></div>
+        </div><div class="balance"><i id="balpin" style="left:50%"></i></div>
+        <p class="tiny" style="margin-top:9px">The marker sits where the talking landed. Dead centre is a perfectly even split.</p></div></div>
+
+      <div class="sect"><h3 class="h3">The way out</h3>
+        <div class="stack">${r.pact.map((p,i)=>`<div class="pactitem"><span class="pactnum">${i+1}</span><span style="font-size:14.5px;line-height:1.55">${esc(p)}</span></div>`).join("")}</div></div>
+
+      <div class="sect"><h3 class="h3">If you want the first word</h3>
+        <div class="stack">
+          <div class="card a"><div class="side-label a"><span class="dot a"></span>${esc(A)} could say</div>
+            <p class="headline" style="font-size:18px;line-height:1.4">"${esc(r.apology.a)}"</p></div>
+          <div class="card b"><div class="side-label b"><span class="dot b"></span>${esc(B)} could say</div>
+            <p class="headline" style="font-size:18px;line-height:1.4">"${esc(r.apology.b)}"</p></div></div></div>
+
+      <div class="sect"><h3 class="h3">Does this land?</h3>
+        <p class="lede">If it doesn't work for either of you, say so. The mediator will hear you out and write it again.</p>
+        <div class="stack">
+          ${["a","b"].map(k=>{
+            const nm = k==="a"?A:B;
+            const dis = (S.mode==="pair" && mySeat && mySeat!==k);
+            return `<div class="card ${k}"${dis?' style="opacity:.45"':""}>
+              <div class="side-label ${k}"><span class="dot ${k}"></span>${esc(nm)}${dis?" — their device":""}</div>
+              <div class="satrow">
+                <button class="satbtn yes" data-s="${k}" data-v="1" aria-pressed="${S[k].satisfied===true}" ${dis?"disabled":""}>
+                  <div class="ic">✓</div><div class="lb">This is fair</div><div class="sb">I can live with this</div></button>
+                <button class="satbtn no" data-s="${k}" data-v="0" aria-pressed="${S[k].satisfied===false}" ${dis?"disabled":""}>
+                  <div class="ic">✕</div><div class="lb">Not yet</div><div class="sb">Something's still wrong</div></button>
+              </div></div>`;
+          }).join("")}
+        </div>
+        <div class="stack" style="margin-top:16px">
+          <button class="btn bloom" id="proceed" disabled>Continue</button>
+          <button class="linkish" id="restart" style="text-align:center">Start a different mediation</button>
+        </div></div>
+    </div>`);
+
+  requestAnimationFrame(()=>setTimeout(()=>{
+    const ra=$("#ringA",n), rb=$("#ringB",n);
+    if(ra) ra.style.strokeDashoffset=(C*(1-r.contribution.a.pct/100)).toFixed(1);
+    if(rb) rb.style.strokeDashoffset=(C*(1-r.contribution.b.pct/100)).toFixed(1);
+    const bp=$("#balpin",n); if(bp) bp.style.left=bal+"%";
+  },220));
+
+  const play=$("#playAll",n), sp=$("#spokenTxt",n);
+  play.onclick=()=>{
+    if(Speak.busy){ Speak.cancel(); play.innerHTML=`${ICON.vol} Hear it from the mediator`; return; }
+    sp.hidden=false; Speak.reset(); Speak.enabled=true;
+    play.innerHTML=`${ICON.stop} Stop`;
+    Speak.flush(r.spoken, ()=>{ play.innerHTML=`${ICON.vol} Hear it again`; });
+  };
+
+  const proceed=$("#proceed",n);
+  function sync(){
+    const aS=S.a.satisfied, bS=S.b.satisfied;
+    const both = aS!==null && bS!==null;
+    proceed.disabled = !both;
+    proceed.textContent = !both ? "Both of you answer first"
+      : (aS&&bS) ? "Close this out" : "Tell the mediator what's wrong";
+  }
+  n.querySelectorAll(".satbtn").forEach(b=>{
+    b.onclick=()=>{
+      const k=b.dataset.s, v=b.dataset.v==="1";
+      S[k].satisfied=v; save();
+      n.querySelectorAll(`.satbtn[data-s="${k}"]`).forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.v==="1" ? v : !v)));
+      sync();
+    };
+  });
+  sync();
+  proceed.onclick=()=>{
+    if(S.a.satisfied && S.b.satisfied) return go("sealed");
+    if(S.round>=MAXROUNDS){ alert("You've been round this three times. Take a break and come back to it — that's a real answer too."); return go("sealed"); }
+    go("rebuttal");
+  };
+  $("#restart",n).onclick=reset;
+  wireTop(n,null);
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   20. REBUTTAL — the mediator hears the objection
+   --------------------------------------------------------------- */
+function pendingSide(){
+  if(S.a.satisfied===false && !S.a.rebuttal) return "a";
+  if(S.b.satisfied===false && !S.b.rebuttal) return "b";
+  return null;
+}
+function Rebuttal(){
+  const side = pendingSide();
+  if(!side) return (go("persuade"), stage(""));
+  const st=S[side];
+  Sky.setMerge(.6); Sky.setEnergy(.5); Sky.setFocus(1);
+  const n=stage(voiceShell({title:"What's still wrong",back:false,side,name:`${st.name}, tell it straight`,meta:"round "+S.round}));
+  let asked=false;
+  const room=VoiceRoom(n,{
+    next: async(onText)=>{
+      if(asked) return "Got it. I'll take that seriously and write it again. <ENOUGH>";
+      asked=true;
+      const t=`I heard you say it doesn't land yet. Tell me the part that's wrong — not all of it, just the piece that made you say no.`;
+      onText({text:t}); return t;
+    },
+    onUser: t=>{ st.rebuttal=t; save(); },
+    onAI: ()=> !!st.rebuttal,
+    onFinish: ()=>{
+      $("#hint",n).innerHTML=`<button class="btn ${side}" id="fin">Continue</button>`;
+      $("#fin",n).onclick=()=>{ const more=pendingSide(); go(more?"rebuttal":"persuade"); };
+    }
+  });
+  room.setRail(50); room.speakNext();
+  wireTop(n,null); return n;
+}
+
+/* ---------------------------------------------------------------
+   21. PERSUADE — spoken directly to whoever is still holding out
+   --------------------------------------------------------------- */
+function Persuade(){
+  const holdout = S.a.satisfied===false ? "a" : S.b.satisfied===false ? "b" : null;
+  if(!holdout){ S.round++; return (go("synth"), stage("")); }
+  const other = holdout==="a" ? "b" : "a";
+  const both = S.a.satisfied===false && S.b.satisfied===false;
+  Sky.setMerge(.7); Sky.setEnergy(.8); Sky.setFocus(1);
+
+  const n=stage(`
+    ${topbar("One more thing",false)}
+    <div class="voice grow">
+      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">speaking</span></div></div>
+      <div class="caption" id="cap"></div>
+      <div class="stack" style="padding-top:12px">
+        <button class="btn bloom" id="again">Write it again, properly</button>
+        <button class="linkish" id="skip" style="text-align:center">Accept it as it stands</button>
+      </div></div>`);
+  const my=TOKEN, cap=$("#cap",n);
+  (async()=>{
+    let text="";
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      text = await AI.chat([{role:"user",content: both
+        ? `You are the mediator in "Obviously, I'm Right". BOTH ${S.a.name} and ${S.b.name} say the summary doesn't land.\n\n${VOICE_STYLE}\n\n${S.a.name} objected: "${S.a.rebuttal}"\n${S.b.name} objected: "${S.b.rebuttal}"\n\nSay something to the two of them together, out loud, under 70 words. Notice what their two objections have in common — that is usually the real conflict. Be warm and direct. No lists.`
+        : persuadePrompt(S[holdout].name, S[other].name)}],
+        {tier:"default", onText:({text:t})=>{ if(TOKEN===my){ cap.textContent=t; Speak.feed(t); } }});
+    }catch(e){
+      text = `${S[holdout].name}, you're allowed to still be angry. But holding the line here costs you something real, and it isn't the argument. Tell me the piece that's wrong and I'll write it again — properly this time, not just softer.`;
+      cap.textContent=text;
+    }
+    if(TOKEN!==my) return;
+    cap.textContent=String(text).trim();
+    Speak.flush(String(text).trim(), ()=>{ const v=$("#vstate",n); if(v){ v.textContent="your call"; v.classList.remove("live"); } });
+  })();
+  $("#again",n).onclick=()=>{ S.round++; save(); go("synth"); };
+  $("#skip",n).onclick=()=>{ S.a.satisfied=true; S.b.satisfied=true; save(); go("sealed"); };
+  wireTop(n,null); return n;
+}
+
+/* ---------------------------------------------------------------
+   22. SEALED
+   --------------------------------------------------------------- */
+function Sealed(){
+  Sky.setMerge(1); Sky.setEnergy(1); Sky.setFocus(0);
+  const r=S.report;
+  const n=stage(`
+    <div class="grow center" style="display:flex;flex-direction:column;gap:24px;text-align:center">
+      <div class="orbwrap" style="height:min(26dvh,190px)"></div>
+      <div class="stack"><h1 class="h2">${esc(S.a.name)} and ${esc(S.b.name)}, both agreed.</h1>
+        <p class="headline" style="color:var(--mist);font-size:19px;margin-top:10px">${esc(r.closing)}</p></div>
+      <div class="card bloom" style="text-align:left"><div class="stack sm">
+        ${r.pact.map((p,i)=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start">
+          <span class="pactnum" style="font-size:15px">${i+1}</span><span style="font-size:14px;line-height:1.5">${esc(p)}</span></div>`).join("")}
+      </div></div>
+      <p class="tiny">Settled in ${S.round} round${S.round>1?"s":""}</p>
+    </div>
+    <div class="stack" style="padding-top:10px">
+      <button class="btn ghost" id="saveTxt">Save the summary</button>
+      <button class="btn bloom" id="again">Start a new mediation</button></div>`);
+  $("#again",n).onclick=reset;
+  $("#saveTxt",n).onclick=saveSummary;
+  return n;
+}
+
+function summaryText(){
+  const r=S.report,A=S.a.name,B=S.b.name,L=[];
+  L.push("OBVIOUSLY, I'M RIGHT — mediation summary");
+  L.push(`${A} and ${B} · ${S.relation} · about ${S.topic} · round ${S.round}`);
+  L.push("".padEnd(52,"-"),"",r.headline,"");
+  L.push("WHAT YOU AGREE ON"); r.commonGround.forEach(x=>L.push("  · "+x)); L.push("");
+  L.push("WHERE YOUR STORIES SPLIT");
+  r.truthMap.forEach(x=>{L.push(`  [${x.kind}] ${x.what}`);L.push(`      ${A}: ${x.a}`);L.push(`      ${B}: ${x.b}`);});
+  L.push("","WHAT YOU EACH MEANT",`  ${A}: ${r.bridge.a.meant}`,`  ${B}: ${r.bridge.b.meant}`);
+  L.push("","WHAT WENT UNSAID",`  ${A}: ${r.unsaid.a}`,`  ${B}: ${r.unsaid.b}`);
+  L.push("","HOW EACH ADDED TO IT",`  ${A} (${r.contribution.a.pct}%): ${r.contribution.a.note}`,`  ${B} (${r.contribution.b.pct}%): ${r.contribution.b.note}`);
+  L.push("","THE AGREEMENT"); r.pact.forEach((p,i)=>L.push(`  ${i+1}. ${p}`));
+  L.push("","FIRST WORDS",`  ${A}: "${r.apology.a}"`,`  ${B}: "${r.apology.b}"`);
+  L.push("",r.closing);
+  return L.join("\n");
+}
+async function saveSummary(){
+  const txt=summaryText();
+  const name=`mediation-${S.a.name}-${S.b.name}.txt`.replace(/\s+/g,"-").toLowerCase();
+  if(window.claude?.use){ try{ const dl=await window.claude.use("downloads"); if(dl){ await dl.save({filename:name,data:txt}); return; } }catch(e){} }
+  try{
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain"})); a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  }catch(e){ navigator.share?.({title:"Mediation summary",text:txt}).catch(()=>{}); }
+}
+
+/* ---------------------------------------------------------------
+   23. SETTINGS
+   --------------------------------------------------------------- */
+let deferredInstall=null;
+addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); deferredInstall=e; });
+
+function openSettings(){
+  const sheet=$("#sheet"), body=$("#sheetbody");
+  body.innerHTML=`<div class="grip"></div><div class="stack lg">
+    <div><h3 class="h3">Settings</h3>
+      <p class="lede" style="margin-top:7px">Mediator: <b>${esc(AI.label())}</b> · Sync: <b>${esc(Net.label())}</b></p></div>
+    <div class="field"><span>Google Gemini API key</span>
+      <input class="input" id="keyIn" type="password" placeholder="For a public deployment" value="${esc(AI.key||"")}">
+      <p class="tiny">Stored in this browser only. Needed when the app is hosted outside Claude.</p></div>
+    <div class="field"><span>Firebase Realtime Database URL</span>
+      <input class="input" id="fbIn" placeholder="https://your-project-default-rtdb.firebaseio.com" value="${esc(store.get("fb","")||"")}">
+      <p class="tiny">Turns on two-device rooms when hosted. Set the database rules to public read/write for the demo.</p></div>
+    <button class="btn ghost" id="saveCfg">Save and reload</button>
+    <button class="btn ghost" id="testBtn">Test the connection</button>
+    <div class="notice" id="testOut" hidden></div>
+    ${deferredInstall?`<button class="btn ghost" id="install">Install on this phone</button>`:
+      `<p class="notice">To install: browser menu, then "Add to Home screen".</p>`}
+    <button class="btn ghost" id="wipe">Clear this mediation</button>
+    <button class="linkish" id="close" style="text-align:center">Close</button></div>`;
+  sheet.classList.add("on");
+  const close=()=>sheet.classList.remove("on");
+  $("#close",body).onclick=close;
+  sheet.onclick=e=>{ if(e.target===sheet) close(); };
+  $("#saveCfg",body).onclick=()=>{
+    const k=$("#keyIn",body).value.trim(), f=$("#fbIn",body).value.trim().replace(/\/+$/,"");
+    k?store.set("key",k):store.del("key");
+    f?store.set("fb",f):store.del("fb");
+    AI.key=k||null;
+    try{ location.reload(); }catch(e){ close(); render(); }
+  };
+  $("#testBtn",body).onclick=async()=>{
+    const out=$("#testOut",body), btn=$("#testBtn",body);
+    out.hidden=false; out.className="notice"; out.textContent="Calling the mediator…";
+    btn.disabled=true;
+    const k=$("#keyIn",body).value.trim();
+    if(k && k!==AI.key){ AI.key=k; store.set("key",k); }
+    await AI.init();
+    const r=await AI.test();
+    btn.disabled=false;
+    out.className = "notice"+(r.ok?"":" warn");
+    out.innerHTML = r.ok
+      ? `<b style="color:var(--bloom)">Live.</b> ${esc(r.backend)} answered in ${r.ms}ms — "${esc(r.detail)}". Real replies from here on.`
+      : `<b style="color:var(--ember)">Not connected.</b> ${esc(r.backend)} said: ${esc(r.detail)}<br><br>Most common causes: the Generative Language API isn't enabled on that Google project, the key has an HTTP-referrer restriction that blocks this site, or the key was pasted with a stray space.`;
+  };
+  const ins=$("#install",body); if(ins) ins.onclick=()=>{ close(); deferredInstall.prompt(); deferredInstall=null; };
+  $("#wipe",body).onclick=()=>{ close(); reset(); };
+}
+
+function reset(){
+  TOKEN++; Speak.cancel(); Ears.stop(false); Net.stopListen();
+  store.del("last");
+  Object.assign(S,{stage:"open",room:null,seat:null,mode:"solo",a:blankSide(),b:blankSide(),
+    relation:"",topic:"",report:null,cross:null,round:1,signed:{a:false,b:false},briefA:null});
+  Sky.setMerge(0); Sky.setFocus(0);
+  render();
+}
+
+/* ---------------------------------------------------------------
+   24. BOOT
+   --------------------------------------------------------------- */
+(async function boot(){
+  render();
+  await Promise.all([AI.init(), Net.init()]);
+  const prev = store.get("last", null);
+  if(prev && prev.stage && prev.stage!=="open" && prev.a?.name){
+    Object.assign(S, prev);
+    if(S.room && Net.available()) Net.listen();
+    render();
+  }
+  addEventListener("beforeunload",()=>{ try{ Speak.cancel(); }catch(e){} });
+  document.addEventListener("visibilitychange",()=>{ if(document.hidden){ Speak.cancel(); Ears.stop(false); } });
+})();
+</script>
+</body>
+</html>
