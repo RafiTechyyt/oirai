@@ -2492,7 +2492,8 @@ function openSettings(){
         <option value="ml-IN">മലയാളം — Malayalam</option>
         <option value="hi-IN">हिन्दी — Hindi</option>
       </select>
-      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. Selecting Malayalam or Hindi forces replies in that language; in auto mode, the mediator detects it from what you type. Malayalam and Hindi replies are spoken with a cloud voice when the app is hosted, so no device voice is needed. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p></div>
+      <p class="tiny">Used to recognise your voice, pick the mediator's voice, and reply in the same language. Selecting Malayalam or Hindi forces replies in that language; in auto mode, the mediator detects it from what you type. Malayalam and Hindi replies are spoken with a cloud voice when the app is hosted, so no device voice is needed. ${AI.cfg&&AI.cfg.accent?`Site default: <b>${esc(AI.cfg.accent)}</b> — your choice here overrides it just for you.`:""}</p>
+      <div class="notice warn" id="voiceTip" hidden></div></div>
     <button class="btn ghost" id="saveCfg">Save and reload</button>
     <button class="btn ghost" id="testBtn">Test the connection</button>
     <div class="notice" id="testOut" hidden></div>
@@ -2511,7 +2512,13 @@ function openSettings(){
     store.set("lang", v); store.del("accent");
     AI.lang=v;
     Speak.pick();
-    const cloudOk = /^(ml|hi)/i.test(v) && (globalThis.AI && AI.serverUrl);
+    const voiceTip=$("#voiceTip",body);
+    const onHost = !!(globalThis.AI && AI.serverUrl);
+    const cloudOk = /^(ml|hi)/i.test(v) && onHost;
+    if(/^(ml|hi)/i.test(v) && !onHost){
+      voiceTip.hidden=false;
+      voiceTip.textContent="Voice replies need the hosted site. Open https://oirai.netlify.app in this browser (this local file can't reach the cloud voice).";
+    } else { voiceTip.hidden=true; }
     if(Speak.enabled && (cloudOk || Speak.ready())){
       const sample = /^ml/i.test(v) ? "എനിക്ക് മലയാളത്തിൽ ചിന്തിക്കാനും പറയാനും കഴിയും."
         : /^hi/i.test(v) ? "मैं हिंदी में सोच और बोल सकती हूँ।"
