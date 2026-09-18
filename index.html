@@ -697,8 +697,9 @@ const Ears = (()=>{
     rec = new SR();
     rec.continuous = true; rec.interimResults = true;
     const lan = store.get("lang", null) || store.get("accent", null) || "auto";
+    const prior = (globalThis.AI && AI.lastLang) || store.get("mic_lang", "");
     rec.lang = (lan==="auto")
-      ? (navigator.language && /^en[-_]?/i.test(navigator.language) ? navigator.language : "en-US")
+      ? (prior || (navigator.language && /^en[-_]?/i.test(navigator.language) ? navigator.language : "en-US"))
       : lan;
     rec.onresult = e=>{
       interim="";
@@ -791,6 +792,7 @@ const AI = {
       else l="en";
     }
     this.lastLang = l;
+    if(/^(ml|hi)[-_]?/i.test(l)) store.set("mic_lang", l);
     if(l && /^ml[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Malayalam, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
     if(l && /^hi[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Hindi, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
     return turns;
