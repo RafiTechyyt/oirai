@@ -2308,9 +2308,15 @@ function Doubts(side){
   const room = VoiceRoom(n,{
     next: async (onText)=>{
       const i = st.answers.length;
+      const L = spokenLang();
       const t = i>=qs.length
-        ? "That's everything I needed. Thank you for going back over it. <ENOUGH>"
-        : (i===0 ? `Thanks for waiting. I've read both accounts and there are two things I want to get right. ${qs[0]}` : qs[i]);
+        ? (L==="Malayalam" ? "എനിക്ക് വേണ്ടതെല്ലാം കിട്ടി. തിരികെ പറഞ്ഞതിന് നന്ദി. <ENOUGH>"
+          : L==="Hindi" ? "मुझे सब कुछ मिल गया। दोबारा बताने के लिए धन्यवाद। <ENOUGH>"
+          : "That's everything I needed. Thank you for going back over it. <ENOUGH>")
+        : (i===0 ? (L==="Malayalam" ? `കാത്തിരുന്നതിന് നന്ദി. രണ്ടുപേരുടെയും പറഞ്ഞത് ഞാൻ വായിച്ചു. രണ്ട് കാര്യങ്ങൾ എനിക്ക് കൃത്യമാക്കണം. ${qs[0]}`
+          : L==="Hindi" ? `धन्यवाद, मैंने दोनों की बातें पढ़ लीं। दो बातें मुझे साफ़ करनी हैं। ${qs[0]}`
+          : `Thanks for waiting. I've read both accounts and there are two things I want to get right. ${qs[0]}`)
+          : qs[i]);
       onText({text:t});
       return t;
     },
@@ -2613,9 +2619,16 @@ function Rebuttal(){
   let asked=false;
   const room=VoiceRoom(n,{
     next: async(onText)=>{
-      if(asked) return "Got it. I'll take that seriously and write it again. <ENOUGH>";
+      const L = spokenLang();
+      if(asked) return (L==="Malayalam" ? "മനസ്സിലായി. അത് ഗൗരവമായി എടുത്ത് ഞാൻ വീണ്ടും എഴുതാം. <ENOUGH>"
+        : L==="Hindi" ? "समझ गया। मैं इसे गंभीरता से लूँगा और फिर से लिखूँगा। <ENOUGH>"
+        : "Got it. I'll take that seriously and write it again. <ENOUGH>");
       asked=true;
-      const t=`I heard you say it doesn't land yet. Tell me the part that's wrong — not all of it, just the piece that made you say no.`;
+      const t=L==="Malayalam"
+        ? "ഇത് നിങ്ങൾക്ക് ഇനിയും ശരിയാകുന്നില്ലെന്ന് ഞാൻ മനസ്സിലാക്കി. ഏത് ഭാഗമാണ് തെറ്റ് എന്ന് പറയൂ — എല്ലാം വേണ്ട, 'അല്ല' എന്ന് നിങ്ങളെക്കൊണ്ട് പറയിച്ച ഭാഗം മാത്രം."
+        : L==="Hindi"
+        ? "मुझे पता चला कि यह अभी आपको सही नहीं लग रहा। बताइए कि कौन सा हिस्सा गलत है — सब कुछ नहीं, बस वही हिस्सा जिसने आपको 'ना' कहने पर मजबूर किया।"
+        : `I heard you say it doesn't land yet. Tell me the part that's wrong — not all of it, just the piece that made you say no.`;
       onText({text:t}); return t;
     },
     onUser: t=>{ st.rebuttal=t; save(); },
