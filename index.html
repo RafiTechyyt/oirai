@@ -817,8 +817,8 @@ const AI = {
     }
     this.lastLang = l;
     if(/^(ml|hi)[-_]?/i.test(l)) store.set("mic_lang", l);
-    if(l && /^ml[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Malayalam, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
-    if(l && /^hi[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in Hindi, keeping the calm, kind mediator tone — do not change meaning.)"}, ...turns];
+    if(l && /^ml[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in pure Malayalam — മലയാളം script. No English, no other language, no Latin transliteration, no mixing. Keep the calm, kind mediator tone — do not change meaning.)"}, ...turns];
+    if(l && /^hi[-_]?/i.test(l)) return [{role:"user", content:"(Respond entirely in pure Hindi — देवनागरी script. No English, no other language, no Latin transliteration, no mixing. Keep the calm, kind mediator tone — do not change meaning.)"}, ...turns];
     return turns;
   },
   /* the netlify function answers a ping and carries the provider keys server-side */
@@ -1330,8 +1330,36 @@ const spokenLang = ()=>{
   if(/[\u0900-\u097F]/.test(txt)) return "Hindi";
   return "English";
 };
-const LANG_LOCK = ()=>`\n\nLANGUAGE: The two people did their talking in ${spokenLang()}. Write this ENTIRE message in ${spokenLang()} — every sentence, question and list item. Never switch language midway and never fall back to English.`;
+const LANG_LOCK = ()=>`\n\nLANGUAGE: The two people did their talking in ${spokenLang()}. Write this ENTIRE message in pure ${spokenLang()} — every sentence, question and list item. Never switch language, never mix ${spokenLang()} with English or any other language, and never transliterate ${spokenLang()} words into Latin letters. One English word ruins it.`;
 const INDIC = s => /[\u0D00-\u0D7F\u0900-\u097F]/.test(JSON.stringify(s||""));
+
+/* --- script purity guards ---------------------------------------------
+   Llama is weak at day-to-day Malayalam/Hindi and occasionally mixes in
+   English words, other languages, or Latin-letter transliteration. These
+   helpers detect that at runtime and re-ask once for a pure in-script
+   version, so a selected language never comes out as a language salad. */
+const valuesOnly = o=>{
+  if(Array.isArray(o)) return o.map(valuesOnly).join("\n");
+  if(o && typeof o==="object") return Object.values(o).map(valuesOnly).join("\n");
+  return String(o);
+};
+const scriptPurity = (lang, str)=>{
+  const t = JSON.stringify(str||"");
+  const ml=(t.match(/[\u0D00-\u0D7F]/g)||[]).length;
+  const dv=(t.match(/[\u0900-\u097F]/g)||[]).length;
+  const lt=(t.match(/[A-Za-z]/g)||[]).length;
+  const tot=ml+dv+lt||1;
+  return lang==="Hindi" ? dv/tot : lang==="Malayalam" ? ml/tot : 1;
+};
+const pureRewrite = async (lang, draft)=>{
+  const target = lang==="Hindi" ? "Hindi (देवनागरी Devanagari script)" : "Malayalam (മലയാളം script)";
+  try{
+    const out = String(await AI.chat([{role:"user",content:
+      `Rewrite this ENTIRE message in pure ${target}: every word. Rules: (1) absolutely no English, no other language, and no mixing; (2) no Latin letters at all — never transliterate like "njan" or "kunjinu"; (3) keep the meaning and tone exactly. Output ONLY the corrected ${lang} text.\n\nMessage to rewrite:\n"""${draft}"""`}],{tier:"quick"})).trim();
+    if(scriptPurity(lang,out)>=0.75) return out;
+  }catch(e){}
+  return draft;
+};
 
 function doubtsPrompt(){
   return `You are the mediator in "Obviously, I'm Right". You have now heard both people privately, separately.
@@ -2087,6 +2115,16 @@ function Chamber(side){
           : spokenLang()==="Hindi" ? "मुझे जो चाहिए मिल गया, धन्यवाद। <ENOUGH>"
           : "I now have what I need, thank you. <ENOUGH>");
       }
+      const L=spokenLang();
+      if(L!=="English"){
+        const cleanBody=String(full).replace(/<ENOUGH>/g,"").trim();
+        if(cleanBody.length>6 && scriptPurity(L,cleanBody)<0.8){
+          const had=/<ENOUGH>/.test(full);
+          Speak.reset();
+          const fixed = await pureRewrite(L, cleanBody);
+          return had ? fixed+" <ENOUGH>" : fixed;
+        }
+      }
       return full;
     },
     fallback: ()=>Local.next(side),
@@ -2375,17 +2413,22 @@ function normalise(r){
 }
 
 /* If the room spoke Malayalam/Hindi but the model (or the offline fallback)
-   produced an English report, quietly ask once for a full in-language rewrite.
-   This is what prevents the summary from suddenly switching language. */
+   produced a report that is not in that script — English, mixed languages,
+   or Latin transliteration — quietly ask once for a full pure in-language
+   rewrite. This is what keeps the summary locked to one language. */
 async function finaliseReport(rep){
   let r = normalise(rep);
   const L = spokenLang();
-  if(L!=="English" && !INDIC(r)){
+  const pure = v=>scriptPurity(L, valuesOnly(v));
+  if(L!=="English" && pure(r)<0.85){
     try{
       if(AI.live()){
         const again = await AI.chat([{role:"user",content:
-          synthesisPrompt()+"\n\nHARD REQUIREMENT: this mediation happened in "+L+". Your last draft came out in the wrong language. EVERY value in the JSON must be in "+L+" — names stay as they are, everything else gets translated. Return the corrected JSON now."}],{json:true,tier:"complex"});
-        if(again && INDIC(again)) r = normalise(again);
+          synthesisPrompt()+"\n\nHARD REQUIREMENT: this mediation happened in "+L+". Your last draft is unreadable — it mixes "+L+" with English and other languages, or transliterates into Latin letters. Rewrite it so EVERY value in the JSON is pure "+L+" script: no English, no other language, no Latin transliteration, no mixing. Keep the JSON keys exactly as they are. Return the corrected JSON now."}],{json:true,tier:"complex"});
+        if(again){
+          const nn = normalise(again);
+          if(pure(nn)>=0.85 || pure(nn)>pure(r)) r = nn;
+        }
       }
     }catch(e){}
   }
@@ -2712,16 +2755,17 @@ async function FlipGen(){
     if(TOKEN!==my) return;
     const L = spokenLang();
     if(L!=="English"){
-      const needs = sc => !sc || !INDIC(sc);
+      const needs = sc => !sc || scriptPurity(L, valuesOnly(sc)) < 0.8;
+      const scold = w => "HARD REQUIREMENT: this flip must be written entirely in pure "+L+". The previous draft mixes "+L+" with English or other languages, or uses Latin transliteration. Rewrite the ENTIRE JSON so every value is pure "+L+" script: no English, no other language, no Latin letters, no mixing. Keep the JSON keys exactly as they are.";
       if(needs(S.flip.a.script)){
         try{
-          const again = await AI.chat([{role:"user",content:flipPrompt("a")+"\n\nHARD REQUIREMENT: this flip must be written entirely in "+L+". The previous draft came out in the wrong language. Rewrite the ENTIRE JSON in "+L+", keeping the same structure."}],{tier:"complex"});
+          const again = await AI.chat([{role:"user",content:flipPrompt("a")+"\n\n"+scold("a")}],{tier:"complex"});
           S.flip.a.script = pickJSON(again);
         }catch(e){}
       }
       if(needs(S.flip.b.script)){
         try{
-          const again = await AI.chat([{role:"user",content:flipPrompt("b")+"\n\nHARD REQUIREMENT: this flip must be written entirely in "+L+". The previous draft came out in the wrong language. Rewrite the ENTIRE JSON in "+L+", keeping the same structure."}],{tier:"complex"});
+          const again = await AI.chat([{role:"user",content:flipPrompt("b")+"\n\n"+scold("b")}],{tier:"complex"});
           S.flip.b.script = pickJSON(again);
         }catch(e){}
       }
