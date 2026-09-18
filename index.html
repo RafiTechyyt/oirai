@@ -1419,10 +1419,18 @@ const FLIP_T = {
   "close":                   { en:"Close this out", ml:"ഇത് അവസാനിപ്പിക്കുക", hi:"इसे समाप्त करें" },
   "through":                 { en:"Through the perspective flip", ml:"വീക്ഷണം മാറ്റത്തിലൂടെ", hi:"दृष्टिकोण बदलाव के माध्यम से" },
 };
+const XT = {
+  "mediator":   { en:"The mediator", ml:"മധ്യസ്ഥൻ", hi:"मध्यस्थ" },
+  "thinking":   { en:"Thinking…", ml:"ചിന്തിക്കുന്നു…", hi:"सोच रहा हूँ…" },
+  "medH":       { en:"That's the heart of it.", ml:"അതാണ് ഇതിന്റെ കാതൽ.", hi:"यही इसका मूल है।" },
+  "medYouSaid": { en:"What each of you said just now", ml:"നിങ്ങൾ ഓരോരുത്തരും ഇപ്പോൾ പറഞ്ഞത്", hi:"आप में से हर एक ने अभी क्या कहा" },
+  "newMed":     { en:"Start a new mediation", ml:"പുതിയ മധ്യസ്ഥത തുടങ്ങൂ", hi:"नई मध्यस्थता शुरू करें" },
+};
 const T = k=>{
   const L = spokenLang();
-  return (FLIP_T[k] && (FLIP_T[k][L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] != null))
-    ? FLIP_T[k][L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] : (FLIP_T[k]&&FLIP_T[k].en)||k;
+  const D = FLIP_T[k] || XT[k];
+  return (D && (D[L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] != null))
+    ? D[L==="Malayalam"?"ml":L==="Hindi"?"hi":"en"] : (D&&D.en)||k;
 };
 const Tt = (k, map)=>String(T(k)).replace(/\{(\w+)\}/g,(_,w)=> (map&&(map[w]!=null)?map[w]:("{"+w+"}")));
 const Tp = (k, a, b)=>Tt(k,{A:a,B:b,N:a,M:b});
@@ -1615,6 +1623,7 @@ function render(){
     chamberA:()=>Chamber("a"), chamberB:()=>Chamber("b"), seal:Seal,
     doubting:Doubting, doubtsA:()=>Doubts("a"), doubtsB:()=>Doubts("b"), sealD:SealD, hold2:Hold2,
     synth:Synth, convince:Convince, flip:Flip, rebuttal:Rebuttal, persuade:Persuade, sealed:Sealed,
+    mediate:Mediate, medEnd:MediateEnd, medCare:MedCare,
     admin:Admin
   };
   app.innerHTML="";
@@ -2439,7 +2448,263 @@ function Hold2(){
           : "They're still answering the mediator's questions. This updates on its own."}</p></div>
       ${ready?"":`<div class="waiting"><i></i><span>Listening for their device</span></div>`}</div>
     <div class="stack">${ready?`<button class="btn bloom" id="g">See what the mediator found</button>`:""}</div>`);
-  if(ready) $("#g",n).onclick=()=>go("synth");
+  if(ready) $("#g",n).onclick=()=>go("mediate");
+  wireTop(n,null); return n;
+}
+
+/* ---------------------------------------------------------------
+   17b. MEDIATE — the mediator talks to both of you, like a person.
+   No report. No analysis screen. No score. One living conversation:
+   the mediator opens from the heart, quietly picks who is carrying
+   more of the misunderstanding, turns to that person first to look
+   at the split moment through the other's eyes, hears each of you
+   out — with real feelings, no questions unless needed — and lands
+   on the one small thing that actually needs to happen.
+   --------------------------------------------------------------- */
+function medContext(){
+  const pt = (qs,ii)=>qs.map((q,i)=>`Q: ${q}\nA: ${(S[ii].answers||[])[i]||"(answering)"}`).join("\n");
+  return `Relationship: ${S.relation||"two people who know each other"} · About: "${S.topic||"something that happened"}"
+
+=== ${S.a.name} said, privately ===
+${sideText("a")}
+
+=== ${S.b.name} said, privately ===
+${sideText("b")}
+
+=== clarifying round with ${S.a.name} ===
+${S.cross&&S.cross.a?pt(S.cross.a,"a"):"(none)"}
+
+=== clarifying round with ${S.b.name} ===
+${S.cross&&S.cross.b?pt(S.cross.b,"b"):"(none)"}`;
+}
+
+function medPlanPrompt(){
+  return `You are the mediator in "Obviously, I'm Right" — a real person with real feelings. You are NOT a report machine and NOT a summary writer. You are about to hold a short live conversation with two people together, after hearing each one privately. Every word of the plan below will be spoken aloud in the room's language.
+
+${medContext()}
+
+Before you write anything, quietly decide who is carrying more of the misunderstanding: compare the two accounts and the clarifying answers, and pick the person whose version conflicts more with the other's story. That person is who you will gently ask to look again through the other's eyes. The words "right" and "wrong" are banned.
+
+SAFETY: if either person's words describe physical abuse, coercion or a threat of violence, reply with exactly this JSON and nothing else: {"stop":true}
+
+Otherwise reply with ONLY this JSON, no fence:
+{
+ "wrong":"a or b",
+ "opening":"speak to BOTH of them now, about 80 words, warm and honest. Name what each one has been carrying, with real feeling, and name the ONE moment where their two stories split — in plain spoken language, no bullets, no labels, no analysis. End by speaking straight to the person you chose: tell them you want to walk them through that same moment from the other side, and that nothing here says they are wrong.",
+ "askW":"ONE warm question, under 28 words, to the person you chose: sit inside that split moment from the other person's side, and tell me what you see there now.",
+ "askO":"ONE warm question, under 28 words, to the other person about the same moment: their honest view of what that moment really was."
+}
+${LANG_LOCK()}`;
+}
+
+function medLivePrompt(side, ans){
+  const who = side==="a"?S.a.name:S.b.name;
+  const ask = (side==="a" ? (S.med&&S.med.askW) : (S.med&&S.med.askO)) || "";
+  return `You are the mediator — a real person with real feelings, never a summary maker. A live mediation is underway and ${who} just answered you.
+
+${medContext()}
+You asked ${who}: "${ask}"
+${who} answered: "${ans}"
+
+Reply to ${who}'s answer alone, out loud, under 60 words, with real feeling:
+- Reflect the human thing in what they said; if they just moved toward the other person's view, honour it plainly.
+- Gently connect what they said to the other person's side.
+- Never judge, never call anyone wrong, no report, no bullet points, no numbers, do NOT ask another question.
+${LANG_LOCK()}`;
+}
+
+function medResolvePrompt(){
+  const r=S.med||{};
+  return `You are the mediator — a real person with real feelings, never a summary maker. A live mediation is ending. You just heard both people answer you.
+
+${medContext()}
+${S.a.name||"One"} answered you: "${r.aAns||""}"
+${S.b.name||"One"} answered you: "${r.bAns||""}"
+
+Speak the close, out loud, under 90 words:
+1. A warm line about what each of them just showed they now understand — use their own words where you can.
+2. The ONE small thing that actually needs to happen between them this week, said plainly, not as a numbered list.
+3. A kind final line for the two of them together.
+
+No report. No verdict. No "in conclusion". No bullet points.
+${LANG_LOCK()}`;
+}
+
+function Mediate(){
+  Sky.setMerge(.95); Sky.setEnergy(.55); Sky.setFocus(1);
+  const A=S.a.name, B=S.b.name;
+  const n=stage(`
+    ${topbar(T("mediator"),false)}
+    <div class="whobar"><span class="dot bloom"></span>
+      <span class="name">${esc(T("mediator"))}</span>
+      <span class="meta" id="mdmeta">${esc(T("step"))} 1 ${esc(T("of"))} 6</span></div>
+    <div class="rail bloom"><i id="mdrail" style="width:0%"></i></div>
+    <div class="voice grow">
+      <div class="voicestage"><div class="vorb"><span class="vstate live" id="vstate">${esc(T("speaking"))}</span></div></div>
+      <div class="caption" id="cap" style="white-space:pre-wrap"></div>
+      <div id="mdask"></div>
+      <p class="tiny" id="mdhint" style="text-align:center;padding-top:8px"></p>
+    </div>`);
+  wireTop(n,null);
+
+  const cap=$("#cap",n), vst=$("#vstate",n), meta=$("#mdmeta",n), rail=$("#mdrail",n),
+        hint=$("#mdhint",n), askBox=$("#mdask",n);
+  const my=TOKEN;
+  const alive=()=>TOKEN===my;
+  const r=S.med={ idx:0, wrong:"a", opening:"", askW:"", askO:"", aAns:"", bAns:"", respW:"", respO:"", res:"", done:false };
+  save();
+
+  let step=0; const STEPS=6;
+  function progress(){ const s=Math.min(step+1,STEPS); meta.textContent=`${T("step")} ${s} ${T("of")} ${STEPS}`; rail.style.width=Math.round(s/STEPS*100)+"%"; }
+
+  function speakText(t, done){
+    vst.textContent=Speak.enabled?T("speaking"):T("reading"); vst.classList.add("live");
+    cap.textContent=t;
+    try{ Speak.cancel(); Speak.feed(t); Speak.flush(t,()=>{ if(alive()&&vst) vst.textContent=T("done"); }); }catch(e){}
+    if(done) done();
+  }
+  function thinking(){ vst.textContent=T("reading"); vst.classList.remove("live"); cap.textContent=T("thinking"); }
+
+  function showNarrate(t, next){
+    step++; progress(); askBox.innerHTML=""; hint.textContent="";
+    hint.innerHTML=`<button class="btn bloom" id="mdnext">${esc(T("next"))} — ${esc(T("continue"))}</button>`;
+    $("#mdnext",n).onclick=()=>{ if(alive()) next(); };
+    speakText(t);
+  }
+
+  function askPerson(q, next){
+    step++; progress();
+    vst.textContent=T("your turn"); vst.classList.remove("live");
+    cap.textContent=q;
+    askBox.innerHTML=`<div class="composer" style="border-top:1px solid var(--hair);padding-top:10px;margin-top:12px">
+        <textarea class="ta" id="mdtalk" rows="2" placeholder="${esc(T("phSay"))}"></textarea>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn sm ghost" id="mdmic" style="${Ears.supported()?"":"display:none"}">${ICON.mic} ${esc(T("say"))}</button>
+          <button class="btn sm bloom" id="mdok">${esc(T("doneKeep"))}</button>
+        </div></div>`;
+    let said="";
+    const ta=$("#mdtalk",n), ok=$("#mdok",n), mic=$("#mdmic",n);
+    const settle=()=>{
+      const v=(said||ta.value).trim(); if(!v){ hint.textContent=T("first"); return; }
+      Ears.stop(false,true);
+      askBox.innerHTML=""; hint.textContent="";
+      next(v);
+    };
+    mic.onclick=()=>{
+      if(Ears.listening){ Ears.stop(true); return; }
+      said=""; ta.value=""; hint.textContent=T("listening"); mic.innerHTML=ICON.stop; mic.classList.add("bloom");
+      Ears.start({ partial:t=>{ ta.value=t; }, final:t=>{ said=t; ta.value=t; },
+        onHeld:()=>{ if(alive()){ hint.textContent=T("catch"); mic.innerHTML=ICON.mic; mic.classList.remove("bloom"); } } });
+    };
+    ok.onclick=settle;
+    ta.addEventListener("keydown",e=>{ if(e.key==="Enter") settle(); });
+    setTimeout(()=>ta.focus(),80);
+    try{ Speak.cancel(); Speak.feed(q); Speak.flush(q,()=>{}); }catch(e){}
+  }
+
+  async function liveCall(promptFn, fallbackFn){
+    thinking();
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      const t=String(await AI.chat([{role:"user",content:promptFn()}],{tier:"default",
+        onText:({text:s})=>{ if(alive()) cap.textContent=s; }})).trim();
+      if(!t) throw 0;
+      return t;
+    }catch(e){ return fallbackFn(); }
+  }
+  function respFallback(side, ans){
+    const who=side==="a"?A:B, L=spokenLang();
+    if(L==="Malayalam") return `അത് പറയാൻ ധൈര്യം വേണം, ${who}. ഇത് പറഞ്ഞതിന് നന്ദി. ഈ നിമിഷം വേറൊരു വശത്തുനിന്ന് നോക്കുമ്പോൾ കാര്യങ്ങൾ അല്പം മാറുന്നത് എനിക്ക് കാണാം.`;
+    if(L==="Hindi") return `यह कहने के लिए हिम्मत चाहिए, ${who}. इसे बाँटने के लिए धन्यवाद। इस पल को दूसरी तरफ़ से देखने पर मैं चीज़ों को थोड़ा अलग देख पा रहा हूँ।`;
+    return `${who}, that takes something to say, and I hear it. Thank you for saying it. I can see this moment a little differently now, from over here.`;
+  }
+  function resFallback(){
+    const L=spokenLang();
+    if(L==="Malayalam") return `${A}, ${B} — ഇന്ന് നിങ്ങൾ രണ്ടുപേരുടെയും വാക്കുകൾ ഞാൻ കേട്ടു. ഈ ആഴ്ച ഒരു ശാന്തമായ സംഭാഷണം മതി: ഓരോരുത്തരും എന്താണ് കേട്ടത് എന്ന് പറയുക. നിങ്ങൾ ഇവിടെ വന്നത് തന്നെ വലിയ കാര്യമാണ്.`;
+    if(L==="Hindi") return `${A}, ${B} — आज मैंने आप दोनों की बात सुनी। इस हफ़्ते एक शांत बातचीत ही काफ़ी है: हर कोई बताए कि उसने क्या सुना। आप दोनों का यहाँ आना ही मायने रखता है।`;
+    return `${A} and ${B} — I heard both of you today, and it took care. That's the thing that will actually help this week: one quiet conversation, where each of you says what they heard. You both showed up here, and that means something.`;
+  }
+  function fallbackPlan(){
+    const L=spokenLang(), wrong="a";
+    if(L==="Malayalam") return {wrong,opening:`${A}, ${B} — ഞാൻ രണ്ടുപേരുടെയും വാക്കുകൾ കേട്ടു. ഈ നിശബ്ദതയ്ക്കുള്ളിൽ ഒരു തെറ്റിദ്ധാരണയുണ്ട്. ${A}, നിങ്ങൾക്ക് എന്താണ് തോന്നിയതെന്ന് ഞാൻ കേട്ടു — ഇപ്പോൾ അത് ${B}യുടെ കണ്ണിലൂടെ കാണാൻ ശ്രമിക്കൂ.`,askW:`${A}, ആ നിമിഷം ${B}യുടെ വശത്തുനിന്ന് നോക്കുമ്പോൾ നിങ്ങൾ എന്താണ് കാണുന്നത്?`,askO:`${B}, ആ നിമിഷം ശരിക്കും എന്തായിരുന്നു — നിങ്ങളുടെ വാക്കുകളിൽ പറയൂ.`};
+    if(L==="Hindi") return {wrong,opening:`${A}, ${B} — मैंने दोनों की बातें सुनीं। इस ख़ामोशी के पीछे एक ग़लतफ़हमी है। ${A}, मैंने सुना है कि आप क्या महसूस कर रहे हैं — अब उसे ${B} की नज़र से देखने की कोशिश कीजिए।`,askW:`${A}, वह पल ${B} की तरफ़ से देखने पर आपको क्या दिखता है?`,askO:`${B}, वह पल सच में क्या था — अपने शब्दों में बताइए।`};
+    return {wrong,opening:`${A} and ${B} — I've heard both of you, and I'm not going to hand you a report. Underneath this silence there is one misunderstanding. ${A}, I heard what you've been feeling — now I want you to look at that same moment from ${B}'s side.`,askW:`${A}, when you look at that moment from ${B}'s side, what do you see now?`,askO:`${B}, in your own words — what was that moment really?`};
+  }
+
+  (async()=>{
+    let plan;
+    try{
+      if(!AI.live()) throw {code:"offline"};
+      const raw=await AI.chat([{role:"user",content:medPlanPrompt()}],{json:true,tier:"complex"});
+      const p=pickJSON(raw);
+      if(p && p.stop) return (go("medCare"), stage(""));
+      plan={wrong:p.wrong==="b"?"b":"a", opening:String(p.opening||"").trim(), askW:String(p.askW||"").trim(), askO:String(p.askO||"").trim()};
+      if(!plan.opening||!plan.askW||!plan.askO) throw 0;
+    }catch(e){ plan=fallbackPlan(); }
+    if(!alive()) return;
+    r.wrong=plan.wrong; r.opening=plan.opening; r.askW=plan.askW; r.askO=plan.askO;
+    const W=plan.wrong==="a"?A:B, O=plan.wrong==="a"?B:A;
+    save();
+    await wait(300);
+    if(!alive()) return;
+    showNarrate(plan.opening, ()=>{
+      askPerson(plan.askW, async wAns=>{
+        r[plan.wrong==="a"?"aAns":"bAns"]=wAns; save();
+        r.respW=await liveCall(()=>medLivePrompt(plan.wrong,wAns), ()=>respFallback(plan.wrong,wAns));
+        if(!alive()) return;
+        showNarrate(r.respW, ()=>{
+          askPerson(plan.askO, async oAns=>{
+            r[plan.wrong==="a"?"bAns":"aAns"]=oAns; save();
+            r.respO=await liveCall(()=>medLivePrompt(plan.wrong==="a"?"b":"a",oAns), ()=>respFallback(plan.wrong==="a"?"b":"a",oAns));
+            if(!alive()) return;
+            showNarrate(r.respO, async ()=>{
+              r.res=await liveCall(medResolvePrompt, resFallback);
+              if(!alive()) return;
+              r.done=true; save();
+              go("medEnd");
+            });
+          });
+        });
+      });
+    });
+  })();
+  return n;
+}
+
+/* ---------------------------------------------------------------
+   17c. MEDIATE END + SAFETY
+   --------------------------------------------------------------- */
+function MediateEnd(){
+  Sky.setMerge(1); Sky.setEnergy(.7); Sky.setFocus(0);
+  const r=S.med||{}, A=S.a.name, B=S.b.name;
+  const n=stage(`
+    <div class="grow center" style="display:flex;flex-direction:column;gap:24px;text-align:center;max-width:46ch;margin-inline:auto">
+      <div class="orbwrap" style="height:min(20dvh,150px)"></div>
+      <div><h1 class="h2">${esc(T("medH"))}</h1>
+        <p class="headline" style="color:var(--mist);font-size:18px;margin-top:10px;line-height:1.55;white-space:pre-wrap">${esc(r.res)}</p></div>
+      <div class="card bloom" style="text-align:left"><div class="stack sm">
+        <p class="tiny" style="color:var(--bloom)">${esc(T("medYouSaid"))}</p>
+        ${r.aAns?`<p style="font-size:14px;line-height:1.55">${esc(A)}: "${esc(r.aAns)}"</p>`:""}
+        ${r.bAns?`<p style="font-size:14px;line-height:1.55">${esc(B)}: "${esc(r.bAns)}"</p>`:""}
+      </div></div>
+    </div>
+    <div class="stack" style="padding-top:10px"><button class="btn bloom" id="again">${esc(T("newMed"))}</button></div>`);
+  $("#again",n).onclick=reset;
+  return n;
+}
+
+function MedCare(){
+  Sky.setMerge(.85); Sky.setEnergy(.3); Sky.setFocus(0);
+  const n=stage(`
+    <div class="grow center" style="display:flex;flex-direction:column;gap:20px;text-align:center">
+      <div class="sealmark" style="width:96px;height:96px">${ICON.lock}</div>
+      <div class="stack sm" style="margin-inline:auto;max-width:44ch">
+        <h2 class="h2">${esc(T("unsafeH"))}</h2>
+        <p class="lede">${esc(T("unsafeP"))}</p>
+      </div>
+    </div>
+    <div class="stack"><button class="btn ghost" id="cont">${esc(T("unsafeB"))}</button></div>`);
+  $("#cont",n).onclick=reset;
   wireTop(n,null); return n;
 }
 
@@ -2661,7 +2926,7 @@ function Rebuttal(){
    --------------------------------------------------------------- */
 function Persuade(){
   const holdout = S.a.satisfied===false ? "a" : S.b.satisfied===false ? "b" : null;
-  if(!holdout){ S.round++; return (go("synth"), stage("")); }
+  if(!holdout){ S.round++; return (go("mediate"), stage("")); }
   const other = holdout==="a" ? "b" : "a";
   const both = S.a.satisfied===false && S.b.satisfied===false;
   Sky.setMerge(.7); Sky.setEnergy(.8); Sky.setFocus(1);
