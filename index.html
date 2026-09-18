@@ -763,14 +763,19 @@ const AI = {
         if(s){ this.sample=s; this.mode="claude"; return this.mode; }
       }catch(e){}
     }
-    this.mode = (this.serverUrl || this.keys[this.provider]) ? this.provider : "local";
+    this.mode = (this.serverUrl || this.keys[this.provider] || this.hosted()) ? this.provider : "local";
     return this.mode;
   },
+  /* the app is served from a host that carries the cloud proxy (the Netlify
+     site), so the proxy is available worldwide without any per-device setup —
+     even before the boot ping has confirmed it */
+  hosted(){ return !!(this.proxyBase && (typeof location==="undefined" || location.protocol!=="file:" || !this.proxyBase.startsWith("/"))); },
   /* the public host config (provider/accent/firebase defaults for everyone) */
+  hostConfigUrl(){ return (this.proxyBase || "/.netlify/functions/ai").replace(/[^/]+$/, "config"); },
   async fetchConfig(){
-    this.configUrl = (this.proxyBase || "/.netlify/functions/ai").replace(/[^/]+$/, "config");
+    this.configUrl = this.hostConfigUrl();
     try{
-      const r = await Promise.race([fetch(this.configUrl,{headers:{"Accept":"application/json"},mode:"cors"}), wait(2500).then(()=>null)]);
+      const r = await Promise.race([fetch(this.configUrl,{headers:{"Accept":"application/json"},mode:"cors"}), wait(6000).then(()=>null)]);
       if(!r || !r.ok) return null;
       const j = await r.json().catch(()=>null);
       if(j && j.ok){ this.cfg = j; this.hasConfig = true; return j; }
@@ -800,17 +805,19 @@ const AI = {
   /* the netlify function answers a ping and carries the provider keys server-side */
   async detectServer(){
     const base = this.proxyBase;
-    try{
-      const r = await Promise.race([fetch(base+"?ping=1",{headers:{"Accept":"application/json"},mode:"cors"}), wait(2500).then(()=>null)]);
-      const j = r && r.ok ? await r.json().catch(()=>null) : null;
-      if(j && j.ok){ this.serverUrl = base; return true; }
-    }catch(e){}
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const r = await Promise.race([fetch(base+"?ping=1",{headers:{"Accept":"application/json"},mode:"cors"}), wait(6000).then(()=>null)]);
+        const j = r && r.ok ? await r.json().catch(()=>null) : null;
+        if(j && j.ok){ this.serverUrl = base; return true; }
+      }catch(e){}
+    }
     this.serverUrl = null; return false;
   },
-  live(){ return this.mode==="claude" || !!this.serverUrl || !!this.keys[this.provider]; },
+  live(){ return this.mode==="claude" || !!this.serverUrl || !!this.keys[this.provider] || this.hosted(); },
   label(){ return this.mode==="claude" ? "Connected"
     : this.mode==="local" ? "No connection"
-    : `Connected · ${this.mode==="groq" ? "Groq" : this.mode==="openai" ? "GPT-6 Astra" : "Gemini"}${this.serverUrl ? " · cloud" : ""}`; },
+    : `Connected · ${this.mode==="groq" ? "Groq" : this.mode==="openai" ? "GPT-6 Astra" : "Gemini"}${(this.serverUrl||this.hosted()) ? " · cloud" : ""}`; },
 
   /* public entry: uses the cloud proxy first when it is live, then falls
      across the other providers and finally any locally-stored keys, instead
@@ -819,9 +826,10 @@ const AI = {
     turns = this.respondTurns(turns, opts);
     const order = [];
     if(this.mode==="claude") order.push({backend:"claude"});
-    if(this.serverUrl){
-      order.push({backend:"server", provider:this.provider});
-      ["groq","openai","gemini"].forEach(p=>{ if(p!==this.provider) order.push({backend:"server", provider:p}); });
+    const prox = this.serverUrl || (this.hosted() ? this.proxyBase : null);
+    if(prox){
+      order.push({backend:"server", provider:this.provider, url:prox});
+      ["groq","openai","gemini"].forEach(p=>{ if(p!==this.provider) order.push({backend:"server", provider:p, url:prox}); });
     }
     ["groq","openai","gemini"].forEach(p=>{ if(this.keys[p]) order.push({backend:p, via:"direct"}); });
     if(!order.length) throw {code:"no_backend", message:"No mediator configured. Add an API key in settings."};
@@ -829,7 +837,12 @@ const AI = {
     for(const o of order){
       try{
         this.mode = o.backend==="claude" ? "claude" : o.backend==="server" ? o.provider : o.backend;
-        const out = await this._chat(turns, {...opts, via:o.via||(o.backend==="server"?"server":"direct"), provider:o.provider});
+        const out = await this._chat(turns, {...opts, via:o.via||(o.backend==="server"?"server":"direct"), provider:o.provider, url:o.url});
+        if(o.backend==="server"){
+          this.serverUrl = o.url;
+          if(this.mode!=="claude") this.mode = o.provider;
+          if(!this.cfg) this.fetchConfig().catch(()=>{});
+        }
         this.lastError=null; this.degraded=false;
         return out;
       }catch(e){
@@ -848,7 +861,7 @@ const AI = {
       if(signal) o.signal=signal;
       return json ? await this.sample.json(turns,o) : (await this.sample(turns,o)).text;
     }
-    if(via==="server") return await this._server(turns,{json,onText,tier,provider:provider||this.provider});
+    if(via==="server") return await this._server(turns,{json,onText,tier,provider:provider||this.provider,url});
     if(this.mode==="groq") return await this._groq(turns,json,onText,tier);
     if(this.mode==="openai") return await this._openai(turns,json,onText,tier);
     if(this.mode==="gemini") return await this._gemini(turns,json,onText,tier);
@@ -857,11 +870,11 @@ const AI = {
 
   /* cloud proxy — streams from the Netlify function in the same SSE shape
      Groq speaks, so the parser below doubles as the server parser */
-  async _server(turns,{json=false,onText=null,tier="default",provider=null}={}){
+  async _server(turns,{json=false,onText=null,tier="default",provider=null,url=null}={}){
     const ctrl = new AbortController(), to = setTimeout(()=>ctrl.abort(),45000);
     let res;
     try{
-      res = await fetch(this.serverUrl,{
+      res = await fetch(url || this.serverUrl,{
         method:"POST",
         headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
         body:JSON.stringify({provider:provider||this.provider, turns, json, tier}),
