@@ -581,16 +581,27 @@ const Speak = (()=>{
   }
 
   /* Malayalam/Hindi are voiced from the cloud endpoint (?tts=1) so they are
-     actually spoken even when the device has no native voice installed. */
+     actually spoken even when the device has no native voice installed. Cloud
+     is reachable whenever the app is hosted — even before the ping finishes. */
   const selectedLang = ()=>{ const l=store.get("lang", null)||store.get("accent", null)||"auto"; return l==="auto"?"":String(l); };
-  const cloudLang = (l)=>/^(ml|hi)[-_]?/i.test(l||"") && !!(globalThis.AI && AI.serverUrl);
+  const cloudLang = (l)=>/^(ml|hi)[-_]?/i.test(l||"") && !!(globalThis.AI && (AI.serverUrl||AI.hosted()));
   const aiUrl = ()=>{ const c=globalThis.AI&&AI.configUrl; return c ? c.replace(/\/config$/,"/ai") : ((globalThis.AI&&AI.proxyBase)||"/.netlify/functions/ai"); };
+  function voiceFor(lang){
+    const tag = lang?String(lang).toLowerCase():"en";
+    const base = tag.split(/[-_]/)[0];
+    const vs = synth.getVoices(); if(!vs.length){ return /^en$/i.test(base)?voice:null; }
+    const like=v=>{ const pl=(v.lang||"").toLowerCase(); return pl===tag || pl.startsWith(tag) || pl.split(/[-_]/)[0]===base; };
+    return vs.find(v=>like(v)&&/natural|neural|google|premium|enhanced|online|desktop/i.test(v.name))
+        || vs.find(like)
+        || (/^en$/i.test(base) ? voice : null);
+  }
   function speakLocal(text, lang){
     return new Promise((res)=>{
       if(!synth){ res(); return; }
       const u=new SpeechSynthesisUtterance(text);
-      if(voice) u.voice=voice;
-      u.lang = voice?.lang || speechLang();
+      const v = voiceFor(lang);
+      if(v){ u.voice=v; u.lang=v.lang; }
+      else { u.lang = lang || speechLang(); }
       u.rate=1.02; u.pitch=1.0; u.volume=1;
       let done=false;
       const fin=()=>{ if(done) return; done=true; res(); };
@@ -1300,8 +1311,13 @@ const doubtText = side => (S.cross?.[side]||[]).map((q,i)=>`Q: ${q}\nA: ${S[side
 
 /* the shared/summary flows skip respondTurns' per-message language injection,
    so each prompt carries its own lock that keeps the whole conclusion in the
-   language these two actually spoke — no mid-book language switch. */
+   language these two actually spoke — no mid-book language switch. An explicit
+   selection (set in Settings) wins over detection: picking Malayalam or Hindi
+   forces every written reply into that language. */
 const spokenLang = ()=>{
+  const sel = store.get("lang", null) || store.get("accent", null) || "auto";
+  if(/^ml[\-_]/i.test(sel)) return "Malayalam";
+  if(/^hi[\-_]/i.test(sel)) return "Hindi";
   const txt = sideText("a")+" "+sideText("b");
   if(/[\u0D00-\u0D7F]/.test(txt)) return "Malayalam";
   if(/[\u0900-\u097F]/.test(txt)) return "Hindi";
@@ -2600,7 +2616,7 @@ Hard rules:
 - Separate clearly what ${them} actually STATED (below) from what you only INFER.
 - Never invent events, intentions, memories or emotions. Never push anyone to accept blame. Never ridicule, shame or attack. Stay neutral, warm and safe.
 - Do not reveal private information ${me} asked to keep confidential.
-- The whole exercise must read smoothly in the exact language these two actually spoke.
+- LANGUAGE: This entire exercise will be spoken aloud in ${spokenLang()} to a person who asked for ${spokenLang()}. Write EVERY word in ${spokenLang()} — every sentence, list item and label. Not one English word may survive. This is mandatory.
 
 === SAFETY STOP ===
 If either side's statements describe a threat of violence, physical abuse, coercion, or endangering of a person or child — do NOT build a flip. Reply with exactly the five words SAFETY_STOP REQUIRED and nothing else.
@@ -2659,6 +2675,23 @@ async function FlipGen(){
     if(/SAFETY_STOP/i.test(String(ra)) || /SAFETY_STOP/i.test(String(rb))){ S.flip.stop=true; save(); go("flip"); return; }
     S.flip.a.script = pickJSON(ra);
     S.flip.b.script = pickJSON(rb);
+    if(TOKEN!==my) return;
+    const L = spokenLang();
+    if(L!=="English"){
+      const needs = sc => !sc || !INDIC(sc);
+      if(needs(S.flip.a.script)){
+        try{
+          const again = await AI.chat([{role:"user",content:flipPrompt("a")+"\n\nHARD REQUIREMENT: this flip must be written entirely in "+L+". The previous draft came out in the wrong language. Rewrite the ENTIRE JSON in "+L+", keeping the same structure."}],{tier:"complex"});
+          S.flip.a.script = pickJSON(again);
+        }catch(e){}
+      }
+      if(needs(S.flip.b.script)){
+        try{
+          const again = await AI.chat([{role:"user",content:flipPrompt("b")+"\n\nHARD REQUIREMENT: this flip must be written entirely in "+L+". The previous draft came out in the wrong language. Rewrite the ENTIRE JSON in "+L+", keeping the same structure."}],{tier:"complex"});
+          S.flip.b.script = pickJSON(again);
+        }catch(e){}
+      }
+    }
     save(); go("flip");
   }catch(e){
     if(TOKEN!==my) return;
